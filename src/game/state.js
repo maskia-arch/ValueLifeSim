@@ -8,30 +8,28 @@ function getRandomName(gender) {
     const namesPath = path.join(process.cwd(), 'data/npc_names.json');
     const data = JSON.parse(fs.readFileSync(namesPath, 'utf8'));
     
-    // Falls das Geschlecht noch nicht feststeht, nimm männlich als Fallback
     const firstNames = gender === 'W' ? data.female : data.male;
     const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
     const lastName = data.lastnames[Math.floor(Math.random() * data.lastnames.length)];
     
     return `${firstName} ${lastName}`;
   } catch (err) {
-    console.error("Namens-Fehler:", err);
     return gender === 'W' ? "Monika Smith" : "Andreas Kaya";
   }
 }
 
 function createPerson(name, gender = null, parents = { m: null, f: null }, inherited = 0) {
-  // Wichtig für den Spieler-Setup: Wenn name explizit ein leerer String oder null ist, 
-  // und kein Geschlecht feststeht, lassen wir ihn für den Bot-Prozess leer.
+  // Wenn name ein String ist (auch leerer String), nehmen wir ihn. 
+  // Nur wenn name absolut null/undefined ist UND ein Geschlecht feststeht, würfeln wir.
   let finalName = name;
-  if (!finalName && gender) {
+  if (finalName === null && gender !== null) {
     finalName = getRandomName(gender);
   }
   
   return {
     id: uuidv4(),
-    name: finalName, 
-    gender, 
+    name: finalName, // Bleibt null für den Spieler, bis Bot ihn setzt
+    gender: gender, 
     age: 0,
     money: inherited,
     health: 100,
@@ -50,16 +48,14 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
 }
 
 function initGameState(userId) {
-  // Eltern mit Geschlecht erstellen -> erhalten sofort Zufallsnamen
+  // Eltern erhalten sofort Geschlecht und Namen
   const mother = createPerson(null, "W");
   mother.age = Math.floor(Math.random() * 15) + 20;
-  mother.money = Math.floor(Math.random() * 5000);
   
   const father = createPerson(null, "M");
   father.age = mother.age + Math.floor(Math.random() * 5);
-  father.money = Math.floor(Math.random() * 5000);
   
-  // Spieler ohne Namen/Geschlecht erstellen
+  // Spieler wird mit name = null und gender = null erstellt
   const p = createPerson(null, null); 
   p.motherId = mother.id;
   p.fatherId = father.id;
