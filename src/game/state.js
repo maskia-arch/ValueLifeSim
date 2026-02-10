@@ -8,7 +8,6 @@ function getRandomName(gender) {
     const namesPath = path.join(process.cwd(), 'data/npc_names.json');
     const data = JSON.parse(fs.readFileSync(namesPath, 'utf8'));
     
-    // Falls das Geschlecht noch nicht feststeht (beim Spieler), nimm männlich als Fallback für den Zufall
     const firstNames = gender === 'W' ? data.female : data.male;
     const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
     const lastName = data.lastnames[Math.floor(Math.random() * data.lastnames.length)];
@@ -21,9 +20,6 @@ function getRandomName(gender) {
 }
 
 function createPerson(name, gender = null, parents = { m: null, f: null }, inherited = 0) {
-  // LOGIK-FIX: 
-  // Nur wenn ein Name explizit übergeben wird ODER wenn es ein NPC mit festem Geschlecht ist, 
-  // wird ein Name generiert. Wenn alles null ist (wie beim neuen Spieler), bleibt der Name leer.
   let finalName = name;
   if (!finalName && gender) {
     finalName = getRandomName(gender);
@@ -31,7 +27,7 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
   
   return {
     id: uuidv4(),
-    name: finalName, // Bleibt null für den Spieler am Anfang
+    name: finalName, 
     gender, 
     age: 0,
     money: inherited,
@@ -46,12 +42,11 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
     isAlive: true,
     motherId: parents.m,
     fatherId: parents.f,
-    childrenIds: []
+    childrenIds: [] // Wichtig für das Erbe-System
   };
 }
 
 function initGameState(userId) {
-  // 1. Eltern erstellen (mit Geschlecht -> bekommt Zufallsname)
   const mother = createPerson(null, "W");
   mother.age = Math.floor(Math.random() * 20) + 20;
   mother.money = Math.floor(Math.random() * 5000);
@@ -62,17 +57,21 @@ function initGameState(userId) {
   father.money = Math.floor(Math.random() * 5000);
   father.relationship = 80;
   
-  // 2. Spieler (Alles null -> Name bleibt leer für Setup)
   const p = createPerson(null, null); 
   p.motherId = mother.id;
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.162",
+    schema_version: "0.0.172",
     setupComplete: false,
     setupStep: 'name',
     country: null,
     current_id: p.id,
+    
+    // NEU: Sicherheit & Erbe
+    activeEventId: null, // Verhindert Mehrfach-Klicks (Exploit-Schutz)
+    isGameOver: false,   // Sperrt das Spiel, wenn der Stammbaum endet
+    
     persons: { 
       [p.id]: p,
       [mother.id]: mother,

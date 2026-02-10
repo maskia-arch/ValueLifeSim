@@ -4,8 +4,9 @@
     "text": "Im Kindergarten möchte jemand dein Spielzeugauto klauen. Was tust du?",
     "min_age": 3,
     "max_age": 6,
+    "weight": 10,
     "choices": [
-      { "text": "Teilen", "response": "Du hast einen neuen Freund gefunden!", "effect": { "happiness": 10 } },
+      { "text": "Teilen", "response": "Du hast einen neuen Freund gefunden!", "effect": { "happiness": 10, "reputation": 5 } },
       { "text": "Verteidigen", "response": "Du hast dein Auto behalten, aber weinst jetzt.", "effect": { "happiness": -5, "smarts": 2 } }
     ]
   },
@@ -14,19 +15,10 @@
     "text": "Du hast auf der Straße einen 20-Euro-Schein gefunden!",
     "min_age": 7,
     "max_age": 99,
+    "weight": 5,
     "choices": [
-      { "text": "Einstecken", "response": "Dein Geldbeutel freut sich.", "effect": { "money": 20, "happiness": 5, "reputation": -2 } },
-      { "text": "Abgeben", "response": "Ehrlichkeit zahlt sich aus (für dein Karma).", "effect": { "happiness": 10, "smarts": 5, "reputation": 5 } }
-    ]
-  },
-  {
-    "id": "parent_argument",
-    "text": "Du hast deine Hausaufgaben nicht gemacht und deine Eltern sind sauer.",
-    "min_age": 7,
-    "max_age": 16,
-    "choices": [
-      { "text": "Entschuldigen", "response": "Sie verzeihen dir diesmal.", "effect": { "happiness": -5, "reputation": 5 } },
-      { "text": "Widerworte geben", "response": "Hausarrest! Deine Eltern sind enttäuscht.", "effect": { "happiness": -20, "reputation": -10 } }
+      { "text": "Einstecken", "response": "Dein Geldbeutel freut sich.", "effect": { "money": 20, "happiness": 5, "reputation": -5 } },
+      { "text": "Abgeben", "response": "Ehrlichkeit zahlt sich aus (für dein Karma).", "effect": { "happiness": 10, "smarts": 5, "reputation": 10 } }
     ]
   },
   {
@@ -34,19 +26,76 @@
     "text": "Eine streunende Katze folgt dir nach Hause. Sie sieht hungrig aus.",
     "min_age": 5,
     "max_age": 99,
+    "weight": 2,
     "choices": [
       { "text": "Füttern", "response": "Die Katze schnurrt und du fühlst dich gut.", "effect": { "money": -5, "happiness": 15 } },
       { "text": "Ignorieren", "response": "Du gehst einfach weiter.", "effect": { "happiness": -5 } }
     ]
   },
   {
-    "id": "school_exam",
-    "text": "Eine wichtige Prüfung steht an. Wie bereitest du dich vor?",
-    "min_age": 10,
-    "max_age": 20,
+    "id": "school_bully",
+    "text": "Ein Mitschüler beleidigt dich auf dem Schulhof. Wie reagierst du?",
+    "min_age": 8,
+    "max_age": 16,
+    "weight": 12,
     "choices": [
-      { "text": "Hart lernen", "response": "Du schreibst eine 1! Deine Eltern sind stolz.", "effect": { "smarts": 10, "happiness": 5, "reputation": 5 } },
-      { "text": "Spicken", "response": "Du wurdest erwischt! Ärger droht.", "effect": { "smarts": -5, "reputation": -15, "happiness": -10 } }
+      { "text": "Ignorieren", "response": "Es ärgert dich, aber du bleibst cool.", "effect": { "happiness": -5, "reputation": 5 } },
+      { "text": "Dagegenhalten", "response": "Du hast dich gewehrt! Dein Ansehen steigt.", "effect": { "happiness": 5, "reputation": 10, "health": -5 } }
+    ]
+  },
+  {
+    "id": "broken_window",
+    "text": "Du hast beim Fußballspielen aus Versehen eine Scheibe eingeworfen!",
+    "min_age": 8,
+    "max_age": 15,
+    "weight": 8,
+    "choices": [
+      { "text": "Wegrennen", "response": "Niemand hat dich gesehen, aber du hast ein schlechtes Gewissen.", "effect": { "happiness": -10, "reputation": -15 } },
+      { "text": "Beichten", "response": "Deine Eltern müssen zahlen, sind aber stolz auf deine Ehrlichkeit.", "effect": { "money": -50, "reputation": 20, "happiness": -5 } }
+    ]
+  },
+  {
+    "id": "flu_infection",
+    "text": "Du fühlst dich schrecklich. Du hast wohl die Grippe erwischt.",
+    "min_age": 3,
+    "max_age": 99,
+    "weight": 10,
+    "choices": [
+      { "text": "Ausruhen", "response": "Nach ein paar Tagen im Bett geht es dir besser.", "effect": { "health": 10, "happiness": -5 } },
+      { "text": "Trotzdem raus", "response": "Dein Zustand verschlechtert sich massiv!", "effect": { "health": -25, "happiness": -15 } }
+    ]
+  },
+  {
+    "id": "library_book",
+    "text": "In der Bibliothek findest du ein Buch über Quantenphysik. Liest du es?",
+    "min_age": 12,
+    "max_age": 99,
+    "weight": 6,
+    "choices": [
+      { "text": "Lesen", "response": "Dein Kopf raucht, aber du hast viel gelernt.", "effect": { "smarts": 15, "happiness": -5 } },
+      { "text": "Weglegen", "response": "Zu kompliziert. Du spielst lieber am Handy.", "effect": { "smarts": -2, "happiness": 10 } }
+    ]
+  },
+  {
+    "id": "lottery_ticket",
+    "text": "Du findest ein altes Rubbellos auf dem Boden. Es wurde noch nicht freigerubbelt!",
+    "min_age": 18,
+    "max_age": 99,
+    "weight": 3,
+    "choices": [
+      { "text": "Rubbeln", "response": "Wahnsinn! Ein kleiner Gewinn!", "effect": { "money": 100, "happiness": 20 } },
+      { "text": "Wegwerfen", "response": "Ist eh meistens eine Niete.", "effect": { "happiness": 0 } }
+    ]
+  },
+  {
+    "id": "neighbor_help",
+    "text": "Deine Nachbarin fragt, ob du ihr beim Tragen der Einkäufe helfen kannst.",
+    "min_age": 10,
+    "max_age": 70,
+    "weight": 10,
+    "choices": [
+      { "text": "Helfen", "response": "Sie gibt dir ein paar Euro als Dankeschön.", "effect": { "money": 10, "reputation": 10, "happiness": 5 } },
+      { "text": "Ablehnen", "response": "Du hattest keine Lust. Dein Ruf leidet etwas.", "effect": { "reputation": -5 } }
     ]
   }
 ]
