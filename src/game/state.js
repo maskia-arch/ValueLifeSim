@@ -4,7 +4,7 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
   return {
     id: uuidv4(),
     name,
-    gender, // M oder W
+    gender, 
     age: 0,
     money: inherited,
     health: 100,
@@ -13,6 +13,7 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
     looks: Math.floor(Math.random() * 101),
     reputation: 50,
     heat: 0,
+    relationship: 50, // Neu: Beziehungswert zum Spieler (0-100)
     jobId: null,
     isAlive: true,
     motherId: parents.m,
@@ -22,12 +23,16 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
 }
 
 function initGameState(userId) {
-  // 1. Eltern erstellen
+  // 1. Eltern erstellen (mit etwas Startkapital und Alter)
   const mother = createPerson("Mama", "W");
-  mother.age = Math.floor(Math.random() * 20) + 20; // 20-40 Jahre alt
+  mother.age = Math.floor(Math.random() * 20) + 20;
+  mother.money = Math.floor(Math.random() * 5000);
+  mother.relationship = 80; // Zu den Eltern startet man meist gut
   
   const father = createPerson("Papa", "M");
-  father.age = mother.age + Math.floor(Math.random() * 5); // Papa meist etwas älter
+  father.age = mother.age + Math.floor(Math.random() * 5);
+  father.money = Math.floor(Math.random() * 5000);
+  father.relationship = 80;
   
   // 2. Spieler erstellen
   const p = createPerson(null); 
@@ -35,8 +40,10 @@ function initGameState(userId) {
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.15", // Version aktualisiert
+    schema_version: "0.0.16",
     setupComplete: false,
+    setupStep: 'name', // Neu: 'name', 'gender', 'country'
+    country: null,     // Neu: Startland
     current_id: p.id,
     persons: { 
       [p.id]: p,
@@ -47,7 +54,6 @@ function initGameState(userId) {
   };
 }
 
-// DAS FEHLTE: Damit andere Dateien diese Funktionen nutzen können
 module.exports = { 
   createPerson, 
   initGameState 

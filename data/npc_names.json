@@ -1,0 +1,14 @@
+{
+  "male": [
+    "Lukas", "Thomas", "Andreas", "Michael", "Stefan", "Christian", 
+    "James", "Robert", "William", "David", "Hakan", "Emre", "Kenji", "Hiroshi"
+  ],
+  "female": [
+    "Julia", "Sarah", "Laura", "Monika", "Sabine", "Elena", 
+    "Mary", "Jennifer", "Patricia", "Linda", "Ayse", "Fatma", "Yuki", "Hana"
+  ],
+  "lastnames": [
+    "Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Meyer", 
+    "Smith", "Johnson", "Williams", "Brown", "Yilmaz", "Kaya", "Sato", "Tanaka"
+  ]
+}
