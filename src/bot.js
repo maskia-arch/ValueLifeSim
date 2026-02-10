@@ -1,4 +1,6 @@
 const { Telegraf, Markup } = require('telegraf');
+const fs = require('fs');
+const path = require('path');
 const { readSave, writeSave } = require('./storage/save');
 const { initGameState } = require('./game/state');
 const Engine = require('./game/engine');
@@ -17,21 +19,15 @@ const mainKeys = Markup.inlineKeyboard([
 // Hilfsfunktion: Steuert den Charakter-Erstellungsprozess
 async function runSetup(ctx, state) {
   const p = state.persons[state.current_id];
-
-  // 1. Name abfragen
   if (!p.name) {
     return ctx.reply("Willkommen bei ValueLifeSim! Wie soll dein Charakter heißen? (Schreib mir einfach den Namen)");
   }
-
-  // 2. Geschlecht abfragen
   if (!p.gender) {
     return ctx.reply(`Hallo ${p.name}! Wähle dein Geschlecht:`, Markup.inlineKeyboard([
       [Markup.button.callback('♂ Männlich', 'set_gender_M'), 
        Markup.button.callback('♀ Weiblich', 'set_gender_W')]
     ]));
   }
-
-  // 3. Setup abschließen
   state.setupComplete = true;
   await writeSave(ctx.from.id, state);
   return ctx.reply(`Das Abenteuer beginnt! Viel Glück, ${p.name}.`, mainKeys);
@@ -41,20 +37,16 @@ async function runSetup(ctx, state) {
 
 bot.start(async (ctx) => {
   let state = await readSave(ctx.from.id);
-  
   if (!state) {
     state = initGameState(ctx.from.id);
     await writeSave(ctx.from.id, state);
   }
-  
   if (!state.setupComplete) {
     return runSetup(ctx, state);
   }
-  
   ctx.reply(`Willkommen zurück bei ValueLifeSim v${config.version}, ${state.persons[state.current_id].name}!`, mainKeys);
 });
 
-// Empfängt den geschriebenen Namen
 bot.on('text', async (ctx) => {
   let state = await readSave(ctx.from.id);
   if (state && !state.setupComplete) {
@@ -69,12 +61,10 @@ bot.on('text', async (ctx) => {
 
 // --- ACTIONS / BUTTONS ---
 
-// Geschlecht festlegen
 bot.action(/set_gender_(.*)/, async (ctx) => {
   await ctx.answerCbQuery();
   const gender = ctx.match[1];
   let state = await readSave(ctx.from.id);
-  
   if (state && !state.setupComplete) {
     const p = state.persons[state.current_id];
     p.gender = gender;
@@ -90,20 +80,19 @@ bot.action('age_up', async (ctx) => {
     if (!state.setupComplete) return runSetup(ctx, state);
 
     const result = Engine.nextYear(state);
+    const p = state.persons[state.current_id];
 
-    if (result.type === 'death') {
-      const p = state.persons[state.current_id];
-      await ctx.reply(`💀 ${p.name} ist im Alter von ${p.age} gestorben.`);
-      return ctx.reply("Das Leben endet hier. /start für einen Neuanfang.");
+    if (result.type === 'event') {
+      const evt = result.data;
+      const choices = evt.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${evt.id}_${i}`)]);
+      
+      await ctx.reply(`*Jahr ${p.age} - Ereignis!*\n\n${evt.text}`, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(choices)
+      });
+    } else {
+      await ctx.reply(`Ein Jahr vergeht... Du bist jetzt ${p.age} Jahre alt.`, mainKeys);
     }
-
-    const evt = result.data;
-    const choices = evt.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${evt.id}_${i}`)]);
-    
-    await ctx.editMessageText(`*Jahr ${state.persons[state.current_id].age}*\n\n${evt.text}`, {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard(choices)
-    });
     await writeSave(ctx.from.id, state);
   } catch (err) {
     console.error("Fehler in age_up:", err);
@@ -113,21 +102,23 @@ bot.action('age_up', async (ctx) => {
 bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   const [_, eId, cIdx] = ctx.match;
   const state = await readSave(ctx.from.id);
-  const events = require('../data/events.json');
+  
+  // Events laden
+  const eventsPath = path.join(process.cwd(), 'data/events.json');
+  const events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
   const event = events.find(e => e.id === eId);
   const choice = event.choices[cIdx];
 
   Engine.processChoice(state, choice);
   await writeSave(ctx.from.id, state);
   await ctx.answerCbQuery(choice.text);
-  ctx.reply(choice.response, mainKeys);
+  await ctx.reply(choice.response, mainKeys);
 });
 
 bot.action('status', async (ctx) => {
   await ctx.answerCbQuery();
   const state = await readSave(ctx.from.id);
   if (!state.setupComplete) return runSetup(ctx, state);
-  
   const p = state.persons[state.current_id];
   ctx.replyWithMarkdown(Render.status(p), mainKeys);
 });
@@ -136,7 +127,6 @@ bot.action('tree', async (ctx) => {
   await ctx.answerCbQuery();
   const state = await readSave(ctx.from.id);
   if (!state.setupComplete) return runSetup(ctx, state);
-  
   ctx.replyWithMarkdown(Render.tree(state), mainKeys);
 });
 

@@ -1,22 +1,22 @@
 [
   {
-    "id": "school_lunch",
-    "min_age": 6,
-    "max_age": 16,
-    "text": "Jemand bietet dir an, deine Hausaufgaben gegen Geld zu machen.",
+    "id": "kindergarten_friend",
+    "text": "Im Kindergarten möchte jemand dein Spielzeugauto klauen. Was tust du?",
+    "min_age": 3,
+    "max_age": 6,
     "choices": [
-      { "text": "Annehmen ($10)", "effects": { "money": -10, "smarts": -5 }, "response": "Du hast Freizeit, lernst aber nichts." },
-      { "text": "Ablehnen", "effects": { "smarts": 5 }, "response": "Du erledigst es selbst." }
+      { "text": "Teilen", "response": "Du hast einen neuen Freund gefunden!", "effect": { "happiness": 10 } },
+      { "text": "Verteidigen", "response": "Du hast dein Auto behalten, aber weinst jetzt.", "effect": { "happiness": -5, "smarts": 2 } }
     ]
   },
   {
-    "id": "crypto_scam",
-    "min_age": 18,
+    "id": "found_money",
+    "text": "Du hast auf der Straße einen 20-Euro-Schein gefunden!",
+    "min_age": 7,
     "max_age": 99,
-    "text": "Ein 'Guru' verspricht dir 1000% Profit mit 'ValueCoin'.",
     "choices": [
-      { "text": "Alles investieren", "effects": { "money": -1000, "happiness": -20 }, "response": "Es war ein Rugpull. Alles weg." },
-      { "text": "Lachen und gehen", "effects": { "smarts": 10 }, "response": "Kluge Entscheidung." }
+      { "text": "Einstecken", "response": "Dein Geldbeutel freut sich.", "effect": { "money": 20, "happiness": 5 } },
+      { "text": "Abgeben", "response": "Dein Karma steigt.", "effect": { "happiness": 10, "smarts": 5 } }
     ]
   }
 ]
