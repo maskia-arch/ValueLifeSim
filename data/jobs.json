@@ -1,0 +1,5 @@
+[
+  { "id": "junior_dev", "title": "Junior Developer", "salary": 3500 },
+  { "id": "ceo", "title": "CEO", "salary": 25000 },
+  { "id": "delivery", "title": "Lieferant", "salary": 1800 }
+]

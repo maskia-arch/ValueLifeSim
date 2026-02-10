@@ -1,0 +1,4 @@
+[
+  { "id": "house_1", "name": "Kleine Wohnung", "price": 120000 },
+  { "id": "car_1", "name": "Gebrauchtwagen", "price": 5000 }
+]
