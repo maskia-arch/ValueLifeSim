@@ -12,12 +12,25 @@ class Engine {
       if (person.isAlive) {
         person.age += 1;
         
-        // NPC-Gesundheit leicht schwanken lassen
+        // --- NPC LOGIK (Eltern/Freunde) ---
         if (id !== state.current_id) {
+          // Gesundheit schwankt
           person.health = Math.min(100, Math.max(0, person.health + (Math.random() * 4 - 2.5)));
+          
+          // NEU: Beziehungsverfall (1-3% pro Jahr ohne Interaktion)
+          const decay = Math.floor(Math.random() * 3) + 1;
+          person.relationship = Math.max(0, (person.relationship || 50) - decay);
+
+          // NEU: NPC-Finanzen (Simuliertes Einkommen/Ausgaben)
+          if (person.age >= 20 && person.age <= 65) {
+            person.money += Math.floor(Math.random() * 500) + 100; // Gehalt
+          } else if (person.age > 65) {
+            person.money += Math.floor(Math.random() * 200) + 50;  // Rente
+          }
+          person.money = Math.max(0, person.money - 50); // Basis-Lebenskosten
         }
 
-        // Todeslogik (natürlich oder durch Krankheit)
+        // --- TODESLOGIK ---
         let deathChance = 0;
         if (person.age > 70) deathChance += (person.age - 70) * 0.05;
         if (person.health < 20) deathChance += 0.15;
@@ -28,7 +41,6 @@ class Engine {
           if (id === state.current_id) {
             return { type: 'death' };
           } else {
-            // Verwandtschaftsgrad bestimmen für die Todesnachricht
             let relation = "Bekannte(r)";
             if (id === player.motherId) relation = "Mutter";
             if (id === player.fatherId) relation = "Vater";
@@ -41,14 +53,12 @@ class Engine {
 
     const p = state.persons[state.current_id];
 
-    // 2. Zufalls-Event Check (25% Wahrscheinlichkeit)
+    // 2. ZUFALLS-EVENT CHECK
     if (Math.random() < 0.25) {
       try {
         const eventsPath = path.join(process.cwd(), 'data/events.json');
         if (fs.existsSync(eventsPath)) {
           const allEvents = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
-          
-          // Filtern nach Alter UND Land (später wichtig für Länder-spezifische Events)
           const possibleEvents = allEvents.filter(e => p.age >= e.min_age && p.age <= e.max_age);
           
           if (possibleEvents.length > 0) {
@@ -61,7 +71,6 @@ class Engine {
       }
     }
 
-    // Wenn kein Event passiert, senden wir trotzdem die NPC-Todesliste mit
     return { type: 'none', npcDeaths: npcDeaths };
   }
 

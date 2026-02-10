@@ -24,14 +24,12 @@ async function runSetup(ctx, state) {
 
   const p = state.persons[state.current_id];
   
-  // 1. Name abfragen
   if (!p.name) {
     state.setupStep = 'name';
     await writeSave(ctx.from.id, state);
     return ctx.reply("Willkommen bei ValueLifeSim! Wie soll dein Charakter heißen?");
   }
 
-  // 2. Geschlecht abfragen
   if (!p.gender) {
     state.setupStep = 'gender';
     await writeSave(ctx.from.id, state);
@@ -41,23 +39,17 @@ async function runSetup(ctx, state) {
     ]));
   }
 
-  // 3. Land abfragen
   if (!state.country) {
     state.setupStep = 'country';
     await writeSave(ctx.from.id, state);
-    
     const countriesPath = path.join(process.cwd(), 'data/countries.json');
     const countriesData = JSON.parse(fs.readFileSync(countriesPath, 'utf8'));
-    
-    // Erstellt Buttons mit Flagge aus der JSON
     const countryButtons = countriesData.map(c => [
         Markup.button.callback(`${c.flag} ${c.name}`, `set_country_${c.name}`)
     ]);
-    
     return ctx.reply("In welchem Land wirst du geboren?", Markup.inlineKeyboard(countryButtons));
   }
 
-  // 4. Setup abschließen
   state.setupComplete = true;
   state.setupStep = 'done';
   await writeSave(ctx.from.id, state);
@@ -74,9 +66,7 @@ bot.start(async (ctx) => {
       await writeSave(ctx.from.id, state);
     }
     return runSetup(ctx, state);
-  } catch (err) {
-    console.error("Start Error:", err);
-  }
+  } catch (err) { console.error(err); }
 });
 
 bot.on('text', async (ctx) => {
@@ -84,7 +74,7 @@ bot.on('text', async (ctx) => {
     let state = await readSave(ctx.from.id);
     if (state && !state.setupComplete && state.setupStep === 'name') {
       state.persons[state.current_id].name = ctx.message.text.trim();
-      await writeSave(ctx.from.id, state); // WICHTIG: Speichern!
+      await writeSave(ctx.from.id, state);
       return runSetup(ctx, state);
     }
   } catch (err) { console.error(err); }
@@ -97,7 +87,7 @@ bot.action(/set_gender_(.*)/, async (ctx) => {
   let state = await readSave(ctx.from.id);
   if (state && state.setupStep === 'gender') {
     state.persons[state.current_id].gender = ctx.match[1];
-    await writeSave(ctx.from.id, state); // FIX: Speichern vor dem nächsten Schritt!
+    await writeSave(ctx.from.id, state);
     return runSetup(ctx, state);
   }
 });
@@ -107,7 +97,7 @@ bot.action(/set_country_(.*)/, async (ctx) => {
   let state = await readSave(ctx.from.id);
   if (state && state.setupStep === 'country') {
     state.country = ctx.match[1];
-    await writeSave(ctx.from.id, state); // FIX: Speichern vor dem Abschluss!
+    await writeSave(ctx.from.id, state);
     return runSetup(ctx, state);
   }
 });
@@ -118,8 +108,6 @@ bot.action('age_up', async (ctx) => {
   try {
     await ctx.answerCbQuery();
     const state = await readSave(ctx.from.id);
-    if (!state.setupComplete) return runSetup(ctx, state);
-
     const result = Engine.nextYear(state);
     const p = state.persons[state.current_id];
 
@@ -143,15 +131,89 @@ bot.action('age_up', async (ctx) => {
   } catch (err) { console.error(err); }
 });
 
+// --- INTERAKTIONS-SYSTEM ---
+
+bot.action('main_menu', async (ctx) => {
+  await ctx.answerCbQuery();
+  const state = await readSave(ctx.from.id);
+  ctx.reply("Was möchtest du tun?", mainKeys);
+});
+
 bot.action(/interact_(.*)/, async (ctx) => {
   await ctx.answerCbQuery();
   const npcId = ctx.match[1];
   const state = await readSave(ctx.from.id);
-  ctx.reply(`Was möchtest du mit ${state.persons[npcId].name} tun?`, Markup.inlineKeyboard([
+  const npc = state.persons[npcId];
+  
+  ctx.reply(`Was möchtest du mit ${npc.name} tun?\n(Beziehung: ${npc.relationship}%)`, Markup.inlineKeyboard([
     [Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎡 Zeit verbringen', `act_spend_${npcId}`)],
+    [Markup.button.callback('💰 Um Geld bitten', `act_askmoney_${npcId}`)],
     [Markup.button.callback('⬅️ Zurück', 'rel')]
   ]));
 });
+
+bot.action(/^act_talk_(.*)$/, async (ctx) => {
+  const npcId = ctx.match[1];
+  const state = await readSave(ctx.from.id);
+  const npc = state.persons[npcId];
+  
+  const boost = Math.floor(Math.random() * 5) + 3;
+  npc.relationship = Math.min(100, (npc.relationship || 50) + boost);
+  
+  await ctx.answerCbQuery(`Gespräch beendet!`);
+  await writeSave(ctx.from.id, state);
+  await ctx.reply(`Du hast mit ${npc.name} über Gott und die Welt geredet. (+${boost}% Beziehung)`, mainKeys);
+});
+
+bot.action(/^act_spend_(.*)$/, async (ctx) => {
+  const npcId = ctx.match[1];
+  const state = await readSave(ctx.from.id);
+  const p = state.persons[state.current_id];
+  const npc = state.persons[npcId];
+
+  const countries = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/countries.json'), 'utf8'));
+  const country = countries.find(c => c.name === state.country) || { cost_of_living: 1 };
+  const cost = Math.floor(30 * country.cost_of_living);
+
+  if (p.money < cost) {
+    return ctx.answerCbQuery("Zu wenig Geld!", { show_alert: true });
+  }
+
+  p.money -= cost;
+  const boost = Math.floor(Math.random() * 10) + 8;
+  npc.relationship = Math.min(100, (npc.relationship || 50) + boost);
+  p.happiness = Math.min(100, p.happiness + 10);
+
+  await ctx.answerCbQuery();
+  await writeSave(ctx.from.id, state);
+  await ctx.reply(`Ihr hattet einen tollen Tag! Es hat $${cost} gekostet. (+${boost}% Beziehung)`, mainKeys);
+});
+
+bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
+  const npcId = ctx.match[1];
+  const state = await readSave(ctx.from.id);
+  const p = state.persons[state.current_id];
+  const npc = state.persons[npcId];
+
+  // Chance basiert auf Beziehung
+  const success = Math.random() * 100 < npc.relationship;
+
+  if (success && npc.money > 0) {
+    const gift = Math.floor(Math.random() * 50) + 10;
+    npc.money -= gift;
+    p.money += gift;
+    npc.relationship = Math.max(0, npc.relationship - 5);
+    await ctx.answerCbQuery(`Erfolg!`);
+    await ctx.reply(`${npc.name} hat dir $${gift} gegeben. Aber es war ihm/ihr etwas unangenehm.`, mainKeys);
+  } else {
+    npc.relationship = Math.max(0, npc.relationship - 10);
+    await ctx.answerCbQuery(`Abgelehnt!`);
+    await ctx.reply(`${npc.name} wollte dir kein Geld geben. Die Stimmung ist jetzt etwas angespannt.`, mainKeys);
+  }
+  await writeSave(ctx.from.id, state);
+});
+
+// --- REST ---
 
 bot.action('rel', async (ctx) => {
   await ctx.answerCbQuery();
@@ -164,6 +226,12 @@ bot.action('status', async (ctx) => {
   await ctx.answerCbQuery();
   const state = await readSave(ctx.from.id);
   ctx.replyWithMarkdown(Render.status(state.persons[state.current_id], state), mainKeys);
+});
+
+bot.action('tree', async (ctx) => {
+  await ctx.answerCbQuery();
+  const state = await readSave(ctx.from.id);
+  ctx.replyWithMarkdown(Render.tree(state), mainKeys);
 });
 
 bot.action('reset', async (ctx) => {
