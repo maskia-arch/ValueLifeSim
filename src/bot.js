@@ -196,6 +196,7 @@ bot.action('rel', async (ctx) => {
   } catch (err) { console.error(err); }
 });
 
+// INTERAKTIONS-MENÜ
 bot.action(/interact_(.*)/, async (ctx) => {
   try {
     await ctx.answerCbQuery();
@@ -209,6 +210,70 @@ bot.action(/interact_(.*)/, async (ctx) => {
     ]));
   } catch (err) { console.error(err); }
 });
+
+// --- INTERAKTIONS-HANDLER ---
+
+bot.action(/^act_talk_(.*)$/, async (ctx) => {
+  try {
+    const npcId = ctx.match[1];
+    const state = await readSave(ctx.from.id);
+    const npc = state.persons[npcId];
+    
+    const boost = Math.floor(Math.random() * 5) + 3;
+    npc.relationship = Math.min(100, (npc.relationship || 50) + boost);
+    
+    await ctx.answerCbQuery(`Gespräch beendet!`);
+    await writeSave(ctx.from.id, state);
+    await ctx.reply(`Du hast mit ${npc.name} geredet. (+${boost}% Vertrauen)`, getMainKeys(state));
+  } catch (err) { console.error(err); }
+});
+
+bot.action(/^act_spend_(.*)$/, async (ctx) => {
+  try {
+    const npcId = ctx.match[1];
+    const state = await readSave(ctx.from.id);
+    const p = state.persons[state.current_id];
+    const npc = state.persons[npcId];
+
+    const cost = 50; // Basis-Kosten
+    if (p.money < cost) return ctx.answerCbQuery("Zu wenig Geld!", { show_alert: true });
+
+    p.money -= cost;
+    const boost = Math.floor(Math.random() * 10) + 8;
+    npc.relationship = Math.min(100, (npc.relationship || 50) + boost);
+    p.happiness = Math.min(100, p.happiness + 10);
+
+    await ctx.answerCbQuery();
+    await writeSave(ctx.from.id, state);
+    await ctx.reply(`Schöner Tag mit ${npc.name}! (-$${cost}, +${boost}% Vertrauen)`, getMainKeys(state));
+  } catch (err) { console.error(err); }
+});
+
+bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
+  try {
+    const npcId = ctx.match[1];
+    const state = await readSave(ctx.from.id);
+    const p = state.persons[state.current_id];
+    const npc = state.persons[npcId];
+
+    const success = Math.random() * 100 < npc.relationship;
+    if (success && npc.money > 20) {
+      const gift = Math.floor(Math.random() * 40) + 10;
+      npc.money -= gift;
+      p.money += gift;
+      npc.relationship = Math.max(0, npc.relationship - 5);
+      await ctx.answerCbQuery(`Erfolg!`);
+      await ctx.reply(`${npc.name} hat dir $${gift} gegeben.`, getMainKeys(state));
+    } else {
+      npc.relationship = Math.max(0, npc.relationship - 10);
+      await ctx.answerCbQuery(`Abgelehnt!`);
+      await ctx.reply(`${npc.name} wollte dir kein Geld geben.`, getMainKeys(state));
+    }
+    await writeSave(ctx.from.id, state);
+  } catch (err) { console.error(err); }
+});
+
+// --- STATUS & SONSTIGES ---
 
 bot.action('status', async (ctx) => {
   try {
