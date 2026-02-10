@@ -8,6 +8,7 @@ function getRandomName(gender) {
     const namesPath = path.join(process.cwd(), 'data/npc_names.json');
     const data = JSON.parse(fs.readFileSync(namesPath, 'utf8'));
     
+    // Falls das Geschlecht noch nicht feststeht, nimm männlich als Fallback
     const firstNames = gender === 'W' ? data.female : data.male;
     const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
     const lastName = data.lastnames[Math.floor(Math.random() * data.lastnames.length)];
@@ -15,11 +16,13 @@ function getRandomName(gender) {
     return `${firstName} ${lastName}`;
   } catch (err) {
     console.error("Namens-Fehler:", err);
-    return gender === 'W' ? "Erika Mustermann" : "Max Mustermann";
+    return gender === 'W' ? "Monika Smith" : "Andreas Kaya";
   }
 }
 
 function createPerson(name, gender = null, parents = { m: null, f: null }, inherited = 0) {
+  // Wichtig für den Spieler-Setup: Wenn name explizit ein leerer String oder null ist, 
+  // und kein Geschlecht feststeht, lassen wir ihn für den Bot-Prozess leer.
   let finalName = name;
   if (!finalName && gender) {
     finalName = getRandomName(gender);
@@ -37,26 +40,26 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
     looks: Math.floor(Math.random() * 101),
     reputation: 50,
     heat: 0,
-    relationship: 50,
+    relationship: 80,
     jobId: null,
     isAlive: true,
     motherId: parents.m,
     fatherId: parents.f,
-    childrenIds: [] // Wichtig für das Erbe-System
+    childrenIds: []
   };
 }
 
 function initGameState(userId) {
+  // Eltern mit Geschlecht erstellen -> erhalten sofort Zufallsnamen
   const mother = createPerson(null, "W");
-  mother.age = Math.floor(Math.random() * 20) + 20;
+  mother.age = Math.floor(Math.random() * 15) + 20;
   mother.money = Math.floor(Math.random() * 5000);
-  mother.relationship = 80;
   
   const father = createPerson(null, "M");
   father.age = mother.age + Math.floor(Math.random() * 5);
   father.money = Math.floor(Math.random() * 5000);
-  father.relationship = 80;
   
+  // Spieler ohne Namen/Geschlecht erstellen
   const p = createPerson(null, null); 
   p.motherId = mother.id;
   p.fatherId = father.id;
@@ -67,11 +70,8 @@ function initGameState(userId) {
     setupStep: 'name',
     country: null,
     current_id: p.id,
-    
-    // NEU: Sicherheit & Erbe
-    activeEventId: null, // Verhindert Mehrfach-Klicks (Exploit-Schutz)
-    isGameOver: false,   // Sperrt das Spiel, wenn der Stammbaum endet
-    
+    activeEventId: null,
+    isGameOver: false,
     persons: { 
       [p.id]: p,
       [mother.id]: mother,
