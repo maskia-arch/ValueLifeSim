@@ -8,6 +8,7 @@ function getRandomName(gender) {
     const namesPath = path.join(process.cwd(), 'data/npc_names.json');
     const data = JSON.parse(fs.readFileSync(namesPath, 'utf8'));
     
+    // Falls das Geschlecht noch nicht feststeht (beim Spieler), nimm männlich als Fallback für den Zufall
     const firstNames = gender === 'W' ? data.female : data.male;
     const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
     const lastName = data.lastnames[Math.floor(Math.random() * data.lastnames.length)];
@@ -20,12 +21,17 @@ function getRandomName(gender) {
 }
 
 function createPerson(name, gender = null, parents = { m: null, f: null }, inherited = 0) {
-  // Wenn 'name' null ist, wird ein Zufallsname generiert
-  const finalName = name || getRandomName(gender);
+  // LOGIK-FIX: 
+  // Nur wenn ein Name explizit übergeben wird ODER wenn es ein NPC mit festem Geschlecht ist, 
+  // wird ein Name generiert. Wenn alles null ist (wie beim neuen Spieler), bleibt der Name leer.
+  let finalName = name;
+  if (!finalName && gender) {
+    finalName = getRandomName(gender);
+  }
   
   return {
     id: uuidv4(),
-    name: finalName,
+    name: finalName, // Bleibt null für den Spieler am Anfang
     gender, 
     age: 0,
     money: inherited,
@@ -45,7 +51,7 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
 }
 
 function initGameState(userId) {
-  // WICHTIG: null übergeben, damit createPerson einen Namen generiert!
+  // 1. Eltern erstellen (mit Geschlecht -> bekommt Zufallsname)
   const mother = createPerson(null, "W");
   mother.age = Math.floor(Math.random() * 20) + 20;
   mother.money = Math.floor(Math.random() * 5000);
@@ -56,13 +62,13 @@ function initGameState(userId) {
   father.money = Math.floor(Math.random() * 5000);
   father.relationship = 80;
   
-  // Spieler (Name wird später im Setup gesetzt)
-  const p = createPerson(null); 
+  // 2. Spieler (Alles null -> Name bleibt leer für Setup)
+  const p = createPerson(null, null); 
   p.motherId = mother.id;
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.161",
+    schema_version: "0.0.162",
     setupComplete: false,
     setupStep: 'name',
     country: null,
