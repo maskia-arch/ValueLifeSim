@@ -9,104 +9,194 @@ const config = require('./config');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// Hauptmenü-Tastatur
 const mainKeys = Markup.inlineKeyboard([
   [Markup.button.callback('➕ Ein Jahr älter', 'age_up')],
   [Markup.button.callback('📊 Status', 'status'), Markup.button.callback('👥 Beziehungen', 'rel')],
   [Markup.button.callback('🌳 Stammbaum', 'tree'), Markup.button.callback('⚙️ Reset', 'reset')]
 ]);
 
+// Hilfsfunktion: Steuert den Charakter-Erstellungsprozess
 async function runSetup(ctx, state) {
+  // Sicherheitscheck: Falls state oder persons fehlen
+  if (!state || !state.persons || !state.current_id) {
+    return ctx.reply("Fehler im Spielstand. Bitte nutze /start für einen Reset.");
+  }
+
   const p = state.persons[state.current_id];
-  if (!p) return ctx.reply("Fehler beim Laden des Charakters. Nutze /start.");
   
-  if (!p.name) return ctx.reply("Wie soll dein Charakter heißen?");
+  // 1. Name abfragen
+  if (!p.name) {
+    return ctx.reply("Willkommen bei ValueLifeSim! Wie soll dein Charakter heißen? (Schreib mir einfach den Namen)");
+  }
+
+  // 2. Geschlecht abfragen
   if (!p.gender) {
-    return ctx.reply(`Wähle dein Geschlecht für ${p.name}:`, Markup.inlineKeyboard([
-      [Markup.button.callback('♂ Männlich', 'set_gender_M'), Markup.button.callback('♀ Weiblich', 'set_gender_W')]
+    return ctx.reply(`Hallo ${p.name}! Wähle dein Geschlecht:`, Markup.inlineKeyboard([
+      [Markup.button.callback('♂ Männlich', 'set_gender_M'), 
+       Markup.button.callback('♀ Weiblich', 'set_gender_W')]
     ]));
   }
+
+  // 3. Setup abschließen
   state.setupComplete = true;
   await writeSave(ctx.from.id, state);
-  return ctx.reply(`Das Abenteuer beginnt, ${p.name}!`, mainKeys);
+  return ctx.reply(`Das Abenteuer beginnt! Viel Glück, ${p.name}.`, mainKeys);
 }
+
+// --- COMMANDS ---
 
 bot.start(async (ctx) => {
   try {
     let state = await readSave(ctx.from.id);
-    if (!state) {
+    
+    // Wenn kein Spielstand existiert oder dieser veraltet/kaputt ist
+    if (!state || !state.persons) {
       state = initGameState(ctx.from.id);
       await writeSave(ctx.from.id, state);
     }
-    if (!state.setupComplete) return runSetup(ctx, state);
-    ctx.reply(`Willkommen zurück v${config.version}!`, mainKeys);
-  } catch (e) { console.error(e); }
-});
-
-bot.on('text', async (ctx) => {
-  let state = await readSave(ctx.from.id);
-  if (state && !state.setupComplete) {
-    const p = state.persons[state.current_id];
-    if (p && !p.name) {
-      p.name = ctx.message.text.trim();
-      await writeSave(ctx.from.id, state);
+    
+    if (!state.setupComplete) {
       return runSetup(ctx, state);
     }
+    
+    ctx.reply(`Willkommen zurück bei ValueLifeSim v${config.version}, ${state.persons[state.current_id].name}!`, mainKeys);
+  } catch (err) {
+    console.error("Fehler im Bot-Start:", err);
+    ctx.reply("Ein technischer Fehler ist aufgetreten. Bitte versuche es mit /start erneut.");
   }
 });
 
+// Empfängt den geschriebenen Namen
+bot.on('text', async (ctx) => {
+  try {
+    let state = await readSave(ctx.from.id);
+    if (state && !state.setupComplete) {
+      const p = state.persons[state.current_id];
+      if (p && !p.name) {
+        p.name = ctx.message.text.trim();
+        await writeSave(ctx.from.id, state);
+        return runSetup(ctx, state);
+      }
+    }
+  } catch (err) {
+    console.error("Fehler bei Texteingabe:", err);
+  }
+});
+
+// --- ACTIONS / BUTTONS ---
+
 bot.action(/set_gender_(.*)/, async (ctx) => {
-  await ctx.answerCbQuery();
-  let state = await readSave(ctx.from.id);
-  if (state && !state.setupComplete) {
-    state.persons[state.current_id].gender = ctx.match[1];
-    await writeSave(ctx.from.id, state);
-    return runSetup(ctx, state);
+  try {
+    await ctx.answerCbQuery();
+    const gender = ctx.match[1];
+    let state = await readSave(ctx.from.id);
+    
+    if (state && !state.setupComplete) {
+      const p = state.persons[state.current_id];
+      p.gender = gender;
+      await writeSave(ctx.from.id, state);
+      return runSetup(ctx, state);
+    }
+  } catch (err) {
+    console.error("Fehler bei set_gender:", err);
   }
 });
 
 bot.action('age_up', async (ctx) => {
-  await ctx.answerCbQuery();
-  const state = await readSave(ctx.from.id);
-  const result = Engine.nextYear(state);
-  const p = state.persons[state.current_id];
+  try {
+    await ctx.answerCbQuery();
+    const state = await readSave(ctx.from.id);
+    if (!state || !state.setupComplete) return runSetup(ctx, state);
 
-  if (result.type === 'death') {
-    return ctx.reply(`💀 Gestorben mit ${p.age}. /start für Neuanfang.`);
-  }
+    const result = Engine.nextYear(state);
+    const p = state.persons[state.current_id];
 
-  if (result.type === 'event') {
-    const choices = result.data.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)]);
-    await ctx.reply(`*Jahr ${p.age}*\n\n${result.data.text}`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(choices) });
-  } else {
-    await ctx.reply(`Du bist jetzt ${p.age} Jahre alt.`, mainKeys);
+    if (result.type === 'death') {
+      await ctx.reply(`💀 Du bist im Alter von ${p.age} Jahren gestorben.`);
+      return ctx.reply("Nutze /start für einen Neuanfang.");
+    }
+
+    if (result.type === 'event') {
+      const evt = result.data;
+      const choices = evt.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${evt.id}_${i}`)]);
+      
+      await ctx.reply(`*Jahr ${p.age} - Ereignis!*\n\n${evt.text}`, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(choices)
+      });
+    } else {
+      await ctx.reply(`Ein Jahr vergeht... Du bist jetzt ${p.age} Jahre alt.`, mainKeys);
+    }
+    await writeSave(ctx.from.id, state);
+  } catch (err) {
+    console.error("Fehler in age_up:", err);
   }
-  await writeSave(ctx.from.id, state);
+});
+
+bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
+  try {
+    const [_, eId, cIdx] = ctx.match;
+    const state = await readSave(ctx.from.id);
+    
+    const eventsPath = path.join(process.cwd(), 'data/events.json');
+    const events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+    const event = events.find(e => e.id === eId);
+    const choice = event.choices[cIdx];
+
+    Engine.processChoice(state, choice);
+    await writeSave(ctx.from.id, state);
+    await ctx.answerCbQuery(choice.text);
+    await ctx.reply(choice.response, mainKeys);
+  } catch (err) {
+    console.error("Fehler bei Event-Wahl:", err);
+  }
 });
 
 bot.action('rel', async (ctx) => {
-  await ctx.answerCbQuery();
-  const state = await readSave(ctx.from.id);
-  ctx.replyWithMarkdown(Render.relationships(state), mainKeys);
+  try {
+    await ctx.answerCbQuery();
+    const state = await readSave(ctx.from.id);
+    if (!state || !state.setupComplete) return runSetup(ctx, state);
+    ctx.replyWithMarkdown(Render.relationships(state), mainKeys);
+  } catch (err) {
+    console.error("Fehler in Beziehungen:", err);
+  }
 });
 
 bot.action('status', async (ctx) => {
-  await ctx.answerCbQuery();
-  const state = await readSave(ctx.from.id);
-  ctx.replyWithMarkdown(Render.status(state.persons[state.current_id]), mainKeys);
+  try {
+    await ctx.answerCbQuery();
+    const state = await readSave(ctx.from.id);
+    if (!state || !state.setupComplete) return runSetup(ctx, state);
+    const p = state.persons[state.current_id];
+    ctx.replyWithMarkdown(Render.status(p), mainKeys);
+  } catch (err) {
+    console.error("Fehler in Status:", err);
+  }
 });
 
 bot.action('tree', async (ctx) => {
-  await ctx.answerCbQuery();
-  const state = await readSave(ctx.from.id);
-  ctx.replyWithMarkdown(Render.tree(state), mainKeys);
+  try {
+    await ctx.answerCbQuery();
+    const state = await readSave(ctx.from.id);
+    if (!state || !state.setupComplete) return runSetup(ctx, state);
+    ctx.replyWithMarkdown(Render.tree(state), mainKeys);
+  } catch (err) {
+    console.error("Fehler in Stammbaum:", err);
+  }
 });
 
 bot.action('reset', async (ctx) => {
-  await ctx.answerCbQuery();
-  const state = initGameState(ctx.from.id);
-  await writeSave(ctx.from.id, state);
-  ctx.reply("Spiel zurückgesetzt.");
-  return runSetup(ctx, state);
+  try {
+    await ctx.answerCbQuery("Reset...");
+    const state = initGameState(ctx.from.id);
+    await writeSave(ctx.from.id, state);
+    ctx.reply("Spiel zurückgesetzt.");
+    return runSetup(ctx, state);
+  } catch (err) {
+    console.error("Fehler bei Reset:", err);
+  }
 });
 
 module.exports = bot;

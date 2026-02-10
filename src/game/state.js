@@ -4,7 +4,7 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
   return {
     id: uuidv4(),
     name,
-    gender, // Neu: M oder W
+    gender, // M oder W
     age: 0,
     money: inherited,
     health: 100,
@@ -35,7 +35,7 @@ function initGameState(userId) {
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.14",
+    schema_version: "0.0.15", // Version aktualisiert
     setupComplete: false,
     current_id: p.id,
     persons: { 
@@ -46,3 +46,9 @@ function initGameState(userId) {
     assets: []
   };
 }
+
+// DAS FEHLTE: Damit andere Dateien diese Funktionen nutzen können
+module.exports = { 
+  createPerson, 
+  initGameState 
+};
