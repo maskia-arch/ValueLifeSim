@@ -1,6 +1,8 @@
+const config = require('../config');
+
 class Render {
   static status(p) {
-    return `✨ *ValueLifeSim v0.0.1*\n\n` +
+    return `✨ *ValueLifeSim v${config.version}*\n\n` + 
            `👤 *Name:* ${p.name}\n` +
            `🎂 *Alter:* ${p.age}\n` +
            `💰 *Bank:* $${p.money}\n` +
@@ -10,7 +12,7 @@ class Render {
   }
 
   static tree(state) {
-    let text = "🌳 *Stammbaum*\n\n";
+    let text = `🌳 *Stammbaum (v${config.version})*\n\n`;
     Object.values(state.persons).forEach(p => {
       text += `${p.isAlive ? '🟢' : '⚫️'} ${p.name} (${p.age} J.)\n`;
     });
