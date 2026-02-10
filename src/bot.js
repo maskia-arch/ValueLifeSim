@@ -41,16 +41,18 @@ async function runSetup(ctx, state) {
     ]));
   }
 
-  // 3. Land abfragen (Neu in v0.0.16)
+  // 3. Land abfragen
   if (!state.country) {
     state.setupStep = 'country';
     await writeSave(ctx.from.id, state);
     
-    // Länder aus data/countries.json laden
     const countriesPath = path.join(process.cwd(), 'data/countries.json');
-    const countries = JSON.parse(fs.readFileSync(countriesPath, 'utf8'));
+    const countriesData = JSON.parse(fs.readFileSync(countriesPath, 'utf8'));
     
-    const countryButtons = countries.map(c => [Markup.button.callback(c, `set_country_${c}`)]);
+    // Erstellt Buttons mit Flagge aus der JSON
+    const countryButtons = countriesData.map(c => [
+        Markup.button.callback(`${c.flag} ${c.name}`, `set_country_${c.name}`)
+    ]);
     
     return ctx.reply("In welchem Land wirst du geboren?", Markup.inlineKeyboard(countryButtons));
   }
@@ -82,6 +84,7 @@ bot.on('text', async (ctx) => {
     let state = await readSave(ctx.from.id);
     if (state && !state.setupComplete && state.setupStep === 'name') {
       state.persons[state.current_id].name = ctx.message.text.trim();
+      await writeSave(ctx.from.id, state); // WICHTIG: Speichern!
       return runSetup(ctx, state);
     }
   } catch (err) { console.error(err); }
@@ -94,6 +97,7 @@ bot.action(/set_gender_(.*)/, async (ctx) => {
   let state = await readSave(ctx.from.id);
   if (state && state.setupStep === 'gender') {
     state.persons[state.current_id].gender = ctx.match[1];
+    await writeSave(ctx.from.id, state); // FIX: Speichern vor dem nächsten Schritt!
     return runSetup(ctx, state);
   }
 });
@@ -103,6 +107,7 @@ bot.action(/set_country_(.*)/, async (ctx) => {
   let state = await readSave(ctx.from.id);
   if (state && state.setupStep === 'country') {
     state.country = ctx.match[1];
+    await writeSave(ctx.from.id, state); // FIX: Speichern vor dem Abschluss!
     return runSetup(ctx, state);
   }
 });
@@ -113,6 +118,8 @@ bot.action('age_up', async (ctx) => {
   try {
     await ctx.answerCbQuery();
     const state = await readSave(ctx.from.id);
+    if (!state.setupComplete) return runSetup(ctx, state);
+
     const result = Engine.nextYear(state);
     const p = state.persons[state.current_id];
 
@@ -120,7 +127,6 @@ bot.action('age_up', async (ctx) => {
       return ctx.reply(`💀 Du bist gestorben. /start für Neuanfang.`);
     }
 
-    // NPC Todes-Events verarbeiten (Neu)
     if (result.npcDeaths && result.npcDeaths.length > 0) {
       for (const death of result.npcDeaths) {
         await ctx.reply(`🕯 Traurige Nachricht: ${death.name} (${death.relation}) ist verstorben.`);
@@ -137,12 +143,10 @@ bot.action('age_up', async (ctx) => {
   } catch (err) { console.error(err); }
 });
 
-// Interaktion mit NPCs (Neu)
 bot.action(/interact_(.*)/, async (ctx) => {
   await ctx.answerCbQuery();
   const npcId = ctx.match[1];
   const state = await readSave(ctx.from.id);
-  // Hier wird später das Interaktionsmenü von Render aufgerufen
   ctx.reply(`Was möchtest du mit ${state.persons[npcId].name} tun?`, Markup.inlineKeyboard([
     [Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎡 Zeit verbringen', `act_spend_${npcId}`)],
     [Markup.button.callback('⬅️ Zurück', 'rel')]
@@ -152,12 +156,10 @@ bot.action(/interact_(.*)/, async (ctx) => {
 bot.action('rel', async (ctx) => {
   await ctx.answerCbQuery();
   const state = await readSave(ctx.from.id);
-  // Render.relationships muss nun Buttons für jeden NPC zurückgeben!
   const { text, keyboard } = Render.relationships(state);
   ctx.replyWithMarkdown(text, keyboard);
 });
 
-// --- STANDARD ACTIONS ---
 bot.action('status', async (ctx) => {
   await ctx.answerCbQuery();
   const state = await readSave(ctx.from.id);
