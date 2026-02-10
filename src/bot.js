@@ -1,32 +1,94 @@
 const { Telegraf, Markup } = require('telegraf');
 const { readSave, writeSave } = require('./storage/save');
-const { initGameState, createPerson } = require('./game/state');
+const { initGameState } = require('./game/state');
 const Engine = require('./game/engine');
 const Render = require('./ui/render');
-const config = require('./config'); // Wir holen uns die zentrale Config
+const config = require('./config');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// Hauptmenü-Tastatur
 const mainKeys = Markup.inlineKeyboard([
   [Markup.button.callback('➕ Ein Jahr älter', 'age_up')],
   [Markup.button.callback('📊 Status', 'status'), Markup.button.callback('🌳 Stammbaum', 'tree')],
   [Markup.button.callback('⚙️ Reset', 'reset')]
 ]);
 
+// Hilfsfunktion: Steuert den Charakter-Erstellungsprozess
+async function runSetup(ctx, state) {
+  const p = state.persons[state.current_id];
+
+  // 1. Name abfragen
+  if (!p.name) {
+    return ctx.reply("Willkommen bei ValueLifeSim! Wie soll dein Charakter heißen? (Schreib mir einfach den Namen)");
+  }
+
+  // 2. Geschlecht abfragen
+  if (!p.gender) {
+    return ctx.reply(`Hallo ${p.name}! Wähle dein Geschlecht:`, Markup.inlineKeyboard([
+      [Markup.button.callback('♂ Männlich', 'set_gender_M'), 
+       Markup.button.callback('♀ Weiblich', 'set_gender_W')]
+    ]));
+  }
+
+  // 3. Setup abschließen
+  state.setupComplete = true;
+  await writeSave(ctx.from.id, state);
+  return ctx.reply(`Das Abenteuer beginnt! Viel Glück, ${p.name}.`, mainKeys);
+}
+
+// --- COMMANDS ---
+
 bot.start(async (ctx) => {
   let state = await readSave(ctx.from.id);
+  
   if (!state) {
-    state = initGameState(ctx.from.id, ctx.from.first_name);
+    state = initGameState(ctx.from.id);
     await writeSave(ctx.from.id, state);
   }
-  // NUTZT JETZT DIE VARIABLE AUS DER version.txt
-  ctx.reply(`Willkommen bei ValueLifeSim v${config.version}, ${ctx.from.first_name}!`, mainKeys);
+  
+  if (!state.setupComplete) {
+    return runSetup(ctx, state);
+  }
+  
+  ctx.reply(`Willkommen zurück bei ValueLifeSim v${config.version}, ${state.persons[state.current_id].name}!`, mainKeys);
+});
+
+// Empfängt den geschriebenen Namen
+bot.on('text', async (ctx) => {
+  let state = await readSave(ctx.from.id);
+  if (state && !state.setupComplete) {
+    const p = state.persons[state.current_id];
+    if (!p.name) {
+      p.name = ctx.message.text.trim();
+      await writeSave(ctx.from.id, state);
+      return runSetup(ctx, state);
+    }
+  }
+});
+
+// --- ACTIONS / BUTTONS ---
+
+// Geschlecht festlegen
+bot.action(/set_gender_(.*)/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const gender = ctx.match[1];
+  let state = await readSave(ctx.from.id);
+  
+  if (state && !state.setupComplete) {
+    const p = state.persons[state.current_id];
+    p.gender = gender;
+    await writeSave(ctx.from.id, state);
+    return runSetup(ctx, state);
+  }
 });
 
 bot.action('age_up', async (ctx) => {
   try {
-    await ctx.answerCbQuery(); // Stoppt die "Lade-Uhr" bei Telegram
+    await ctx.answerCbQuery();
     const state = await readSave(ctx.from.id);
+    if (!state.setupComplete) return runSetup(ctx, state);
+
     const result = Engine.nextYear(state);
 
     if (result.type === 'death') {
@@ -64,6 +126,8 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
 bot.action('status', async (ctx) => {
   await ctx.answerCbQuery();
   const state = await readSave(ctx.from.id);
+  if (!state.setupComplete) return runSetup(ctx, state);
+  
   const p = state.persons[state.current_id];
   ctx.replyWithMarkdown(Render.status(p), mainKeys);
 });
@@ -71,14 +135,17 @@ bot.action('status', async (ctx) => {
 bot.action('tree', async (ctx) => {
   await ctx.answerCbQuery();
   const state = await readSave(ctx.from.id);
+  if (!state.setupComplete) return runSetup(ctx, state);
+  
   ctx.replyWithMarkdown(Render.tree(state), mainKeys);
 });
 
 bot.action('reset', async (ctx) => {
   await ctx.answerCbQuery("Spiel wird zurückgesetzt...");
-  const state = initGameState(ctx.from.id, ctx.from.first_name);
+  const state = initGameState(ctx.from.id);
   await writeSave(ctx.from.id, state);
-  ctx.reply("Spiel zurückgesetzt.", mainKeys);
+  ctx.reply("Spiel zurückgesetzt. Bitte starte mit deinem neuen Namen.");
+  return runSetup(ctx, state);
 });
 
 module.exports = bot;
