@@ -9,11 +9,11 @@ const config = require('./config');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// Hauptmenü-Tastatur
+// Hauptmenü-Tastatur (erweitert um Beziehungen)
 const mainKeys = Markup.inlineKeyboard([
   [Markup.button.callback('➕ Ein Jahr älter', 'age_up')],
-  [Markup.button.callback('📊 Status', 'status'), Markup.button.callback('🌳 Stammbaum', 'tree')],
-  [Markup.button.callback('⚙️ Reset', 'reset')]
+  [Markup.button.callback('📊 Status', 'status'), Markup.button.callback('👥 Beziehungen', 'rel')],
+  [Markup.button.callback('🌳 Stammbaum', 'tree'), Markup.button.callback('⚙️ Reset', 'reset')]
 ]);
 
 // Hilfsfunktion: Steuert den Charakter-Erstellungsprozess
@@ -82,6 +82,12 @@ bot.action('age_up', async (ctx) => {
     const result = Engine.nextYear(state);
     const p = state.persons[state.current_id];
 
+    // Check auf Tod (falls Engine result.type === 'death' zurückgibt)
+    if (result.type === 'death') {
+        await ctx.reply(`💀 Du bist im Alter von ${p.age} Jahren gestorben.`);
+        return ctx.reply("Das Leben ist vorbei. Nutze /start oder den Reset-Button für einen Neuanfang.");
+    }
+
     if (result.type === 'event') {
       const evt = result.data;
       const choices = evt.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${evt.id}_${i}`)]);
@@ -103,7 +109,6 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   const [_, eId, cIdx] = ctx.match;
   const state = await readSave(ctx.from.id);
   
-  // Events laden
   const eventsPath = path.join(process.cwd(), 'data/events.json');
   const events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
   const event = events.find(e => e.id === eId);
@@ -121,6 +126,13 @@ bot.action('status', async (ctx) => {
   if (!state.setupComplete) return runSetup(ctx, state);
   const p = state.persons[state.current_id];
   ctx.replyWithMarkdown(Render.status(p), mainKeys);
+});
+
+bot.action('rel', async (ctx) => {
+    await ctx.answerCbQuery();
+    const state = await readSave(ctx.from.id);
+    if (!state.setupComplete) return runSetup(ctx, state);
+    ctx.replyWithMarkdown(Render.relationships(state), mainKeys);
 });
 
 bot.action('tree', async (ctx) => {

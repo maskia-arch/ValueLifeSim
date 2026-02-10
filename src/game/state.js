@@ -22,15 +22,27 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
 }
 
 function initGameState(userId) {
-  // Wir erstellen die Person erst ohne Namen, da dieser im Bot-Dialog abgefragt wird
+  // 1. Eltern erstellen
+  const mother = createPerson("Mama", "W");
+  mother.age = Math.floor(Math.random() * 20) + 20; // 20-40 Jahre alt
+  
+  const father = createPerson("Papa", "M");
+  father.age = mother.age + Math.floor(Math.random() * 5); // Papa meist etwas älter
+  
+  // 2. Spieler erstellen
   const p = createPerson(null); 
+  p.motherId = mother.id;
+  p.fatherId = father.id;
+
   return {
-    schema_version: "0.0.12", // Deine aktuelle Ziel-Version
-    setupComplete: false,    // Neu: Markiert, ob Name/Geschlecht feststehen
+    schema_version: "0.0.14",
+    setupComplete: false,
     current_id: p.id,
-    persons: { [p.id]: p },
+    persons: { 
+      [p.id]: p,
+      [mother.id]: mother,
+      [father.id]: father
+    },
     assets: []
   };
 }
-
-module.exports = { createPerson, initGameState };

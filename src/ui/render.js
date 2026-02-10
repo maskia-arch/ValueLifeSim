@@ -18,6 +18,36 @@ class Render {
     });
     return text;
   }
+
+  static relationships(state) {
+    const player = state.persons[state.current_id];
+    let text = `👥 *Beziehungen (v${config.version})*\n\n`;
+
+    // Wir gehen alle Personen durch, außer den Spieler selbst
+    for (let id in state.persons) {
+      if (id === state.current_id) continue;
+      
+      const p = state.persons[id];
+      
+      // Verwandtschaftsgrad bestimmen
+      let relation = "Bekannte(r)";
+      if (id === player.motherId) relation = "Mutter";
+      if (id === player.fatherId) relation = "Vater";
+
+      // Status-Emoji (Herz für lebende, Totenkopf für verstorbene)
+      const statusIcon = p.isAlive ? "❤️" : "💀";
+      const ageText = p.isAlive ? `${p.age} Jahre` : "Verstorben";
+
+      text += `${statusIcon} *${p.name || 'Unbekannt'}*\n`;
+      text += `└ ${relation} | ${ageText}\n\n`;
+    }
+
+    if (Object.keys(state.persons).length <= 1) {
+      text += "_Du hast aktuell noch keine bekannten Beziehungen._";
+    }
+
+    return text;
+  }
 }
 
 module.exports = Render;
