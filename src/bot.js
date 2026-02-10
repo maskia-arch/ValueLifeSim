@@ -30,11 +30,15 @@ async function runSetup(ctx, state) {
     return ctx.reply("Fehler im Spielstand. Bitte nutze /start für einen Reset.");
   }
   const p = state.persons[state.current_id];
-  if (!p.name) {
+  
+  // 1. NAME
+  if (!p.name || p.name.trim() === "") {
     state.setupStep = 'name';
     await writeSave(ctx.from.id, state);
     return ctx.reply("Willkommen bei ValueLifeSim! Wie soll dein Charakter heißen?");
   }
+  
+  // 2. GESCHLECHT
   if (!p.gender) {
     state.setupStep = 'gender';
     await writeSave(ctx.from.id, state);
@@ -42,6 +46,8 @@ async function runSetup(ctx, state) {
       [Markup.button.callback('♂ Männlich', 'set_gender_M'), Markup.button.callback('♀ Weiblich', 'set_gender_W')]
     ]));
   }
+  
+  // 3. LAND
   if (!state.country) {
     state.setupStep = 'country';
     await writeSave(ctx.from.id, state);
@@ -50,6 +56,7 @@ async function runSetup(ctx, state) {
     const countryButtons = countriesData.map(c => [Markup.button.callback(`${c.flag} ${c.name}`, `set_country_${c.name}`)]);
     return ctx.reply("In welchem Land wirst du geboren?", Markup.inlineKeyboard(countryButtons));
   }
+  
   state.setupComplete = true;
   state.setupStep = 'done';
   await writeSave(ctx.from.id, state);
@@ -66,6 +73,45 @@ bot.start(async (ctx) => {
     }
     return runSetup(ctx, state);
   } catch (err) { console.error(err); }
+});
+
+// KORREKTUR: Der Text-Handler muss den Namen verarbeiten!
+bot.on('text', async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    let state = await readSave(userId);
+    
+    // Wenn wir im Setup-Schritt 'name' sind
+    if (state && !state.setupComplete && state.setupStep === 'name') {
+      const inputName = ctx.message.text.trim();
+      if (inputName.length < 2) return ctx.reply("Der Name ist zu kurz.");
+      
+      state.persons[state.current_id].name = inputName;
+      await writeSave(userId, state);
+      return runSetup(ctx, state); // Springt zum nächsten Schritt (Geschlecht)
+    }
+  } catch (err) { console.error("Text Handler Error:", err); }
+});
+
+// --- ACTIONS / SETUP ---
+bot.action(/set_gender_(.*)/, async (ctx) => {
+  await ctx.answerCbQuery();
+  let state = await readSave(ctx.from.id);
+  if (state && state.setupStep === 'gender') {
+    state.persons[state.current_id].gender = ctx.match[1];
+    await writeSave(ctx.from.id, state);
+    return runSetup(ctx, state);
+  }
+});
+
+bot.action(/set_country_(.*)/, async (ctx) => {
+  await ctx.answerCbQuery();
+  let state = await readSave(ctx.from.id);
+  if (state && state.setupStep === 'country') {
+    state.country = ctx.match[1];
+    await writeSave(ctx.from.id, state);
+    return runSetup(ctx, state);
+  }
 });
 
 // --- ACTIONS / GAMEPLAY ---
@@ -104,23 +150,18 @@ bot.action('age_up', async (ctx) => {
   } catch (err) { console.error(err); }
 });
 
-// Klick-Exploit Schutz & Event Handler
 bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   try {
     const [_, eventId, choiceIdx] = ctx.match;
     const state = await readSave(ctx.from.id);
-    
-    // Prüfen, ob das Event noch aktiv ist (Verhindert Mehrfach-Klicks)
-    if (state.activeEventId !== eventId) {
-      return ctx.answerCbQuery("Dieses Ereignis ist bereits abgeschlossen.", { show_alert: true });
-    }
+    if (state.activeEventId !== eventId) return ctx.answerCbQuery("Dieses Ereignis ist bereits abgeschlossen.", { show_alert: true });
 
     const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
     const event = events.find(e => e.id === eventId);
     if (!event) return ctx.answerCbQuery("Fehler.");
 
     const choice = event.choices[parseInt(choiceIdx)];
-    Engine.processChoice(state, choice); // Setzt activeEventId auf null
+    Engine.processChoice(state, choice);
     
     await ctx.answerCbQuery();
     await writeSave(ctx.from.id, state);
@@ -128,21 +169,19 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   } catch (err) { console.error(err); }
 });
 
-// Erbe-Übernahme
 bot.action(/^inherit_(.*)$/, async (ctx) => {
   try {
     const nextId = ctx.match[1];
     const state = await readSave(ctx.from.id);
     const newChar = state.persons[nextId];
-    
     state.current_id = nextId;
+    state.isGameOver = false; // Spiel geht weiter
     await writeSave(ctx.from.id, state);
     await ctx.answerCbQuery();
     await ctx.reply(`Ein neues Kapitel beginnt! Du bist jetzt ${newChar.name}.`, getMainKeys(state));
   } catch (err) { console.error(err); }
 });
 
-// --- RESTLICHE HANDLER (MIT SPERRE) ---
 bot.action('status', async (ctx) => {
   const state = await readSave(ctx.from.id);
   await ctx.answerCbQuery();
@@ -164,8 +203,6 @@ bot.action('reset', async (ctx) => {
   return runSetup(ctx, state);
 });
 
-// Dummy Handler für andere Actions
 bot.on('callback_query', async (ctx) => { await ctx.answerCbQuery(); });
-bot.on('text', async (ctx) => { /* Setup Logik hier lassen */ });
 
 module.exports = bot;
