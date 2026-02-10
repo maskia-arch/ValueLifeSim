@@ -3,6 +3,7 @@ const { readSave, writeSave } = require('./storage/save');
 const { initGameState, createPerson } = require('./game/state');
 const Engine = require('./game/engine');
 const Render = require('./ui/render');
+const config = require('./config'); // Wir holen uns die zentrale Config
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
@@ -18,28 +19,33 @@ bot.start(async (ctx) => {
     state = initGameState(ctx.from.id, ctx.from.first_name);
     await writeSave(ctx.from.id, state);
   }
-  ctx.reply(`Willkommen bei ValueLifeSim v0.0.1, ${ctx.from.first_name}!`, mainKeys);
+  // NUTZT JETZT DIE VARIABLE AUS DER version.txt
+  ctx.reply(`Willkommen bei ValueLifeSim v${config.version}, ${ctx.from.first_name}!`, mainKeys);
 });
 
 bot.action('age_up', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  const result = Engine.nextYear(state);
+  try {
+    await ctx.answerCbQuery(); // Stoppt die "Lade-Uhr" bei Telegram
+    const state = await readSave(ctx.from.id);
+    const result = Engine.nextYear(state);
 
-  if (result.type === 'death') {
-    const p = state.persons[state.current_id];
-    await ctx.reply(`💀 ${p.name} ist im Alter von ${p.age} gestorben.`);
-    // Hier könnte Erben-Logik folgen
-    return ctx.reply("Das Leben endet hier. /start für einen Neuanfang.");
+    if (result.type === 'death') {
+      const p = state.persons[state.current_id];
+      await ctx.reply(`💀 ${p.name} ist im Alter von ${p.age} gestorben.`);
+      return ctx.reply("Das Leben endet hier. /start für einen Neuanfang.");
+    }
+
+    const evt = result.data;
+    const choices = evt.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${evt.id}_${i}`)]);
+    
+    await ctx.editMessageText(`*Jahr ${state.persons[state.current_id].age}*\n\n${evt.text}`, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard(choices)
+    });
+    await writeSave(ctx.from.id, state);
+  } catch (err) {
+    console.error("Fehler in age_up:", err);
   }
-
-  const evt = result.data;
-  const choices = evt.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${evt.id}_${i}`)]);
-  
-  await ctx.editMessageText(`*Jahr ${state.persons[state.current_id].age}*\n\n${evt.text}`, {
-    parse_mode: 'Markdown',
-    ...Markup.inlineKeyboard(choices)
-  });
-  await writeSave(ctx.from.id, state);
 });
 
 bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
@@ -56,17 +62,20 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
 });
 
 bot.action('status', async (ctx) => {
+  await ctx.answerCbQuery();
   const state = await readSave(ctx.from.id);
   const p = state.persons[state.current_id];
   ctx.replyWithMarkdown(Render.status(p), mainKeys);
 });
 
 bot.action('tree', async (ctx) => {
+  await ctx.answerCbQuery();
   const state = await readSave(ctx.from.id);
   ctx.replyWithMarkdown(Render.tree(state), mainKeys);
 });
 
 bot.action('reset', async (ctx) => {
+  await ctx.answerCbQuery("Spiel wird zurückgesetzt...");
   const state = initGameState(ctx.from.id, ctx.from.first_name);
   await writeSave(ctx.from.id, state);
   ctx.reply("Spiel zurückgesetzt.", mainKeys);
