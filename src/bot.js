@@ -75,20 +75,16 @@ bot.start(async (ctx) => {
   } catch (err) { console.error(err); }
 });
 
-// KORREKTUR: Der Text-Handler muss den Namen verarbeiten!
 bot.on('text', async (ctx) => {
   try {
     const userId = ctx.from.id;
     let state = await readSave(userId);
-    
-    // Wenn wir im Setup-Schritt 'name' sind
     if (state && !state.setupComplete && state.setupStep === 'name') {
       const inputName = ctx.message.text.trim();
       if (inputName.length < 2) return ctx.reply("Der Name ist zu kurz.");
-      
       state.persons[state.current_id].name = inputName;
       await writeSave(userId, state);
-      return runSetup(ctx, state); // Springt zum nächsten Schritt (Geschlecht)
+      return runSetup(ctx, state);
     }
   } catch (err) { console.error("Text Handler Error:", err); }
 });
@@ -162,7 +158,6 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
 
     const choice = event.choices[parseInt(choiceIdx)];
     Engine.processChoice(state, choice);
-    
     await ctx.answerCbQuery();
     await writeSave(ctx.from.id, state);
     await ctx.reply(`✅ ${choice.response}`, getMainKeys(state));
@@ -173,27 +168,62 @@ bot.action(/^inherit_(.*)$/, async (ctx) => {
   try {
     const nextId = ctx.match[1];
     const state = await readSave(ctx.from.id);
-    const newChar = state.persons[nextId];
     state.current_id = nextId;
-    state.isGameOver = false; // Spiel geht weiter
+    state.isGameOver = false;
     await writeSave(ctx.from.id, state);
     await ctx.answerCbQuery();
-    await ctx.reply(`Ein neues Kapitel beginnt! Du bist jetzt ${newChar.name}.`, getMainKeys(state));
+    await ctx.reply(`Ein neues Kapitel beginnt!`, getMainKeys(state));
+  } catch (err) { console.error(err); }
+});
+
+// --- NAVIGATION & UI ---
+bot.action('main_menu', async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    const state = await readSave(ctx.from.id);
+    const p = state.persons[state.current_id];
+    await ctx.reply(`Was möchtest du tun, ${p.name}?`, getMainKeys(state));
+  } catch (err) { console.error(err); }
+});
+
+bot.action('rel', async (ctx) => {
+  try {
+    const state = await readSave(ctx.from.id);
+    if (checkGameOver(state)) return ctx.answerCbQuery("Kein Zugriff.");
+    await ctx.answerCbQuery();
+    const { text, keyboard } = Render.relationships(state);
+    ctx.replyWithMarkdown(text, keyboard);
+  } catch (err) { console.error(err); }
+});
+
+bot.action(/interact_(.*)/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    const npcId = ctx.match[1];
+    const state = await readSave(ctx.from.id);
+    const npc = state.persons[npcId];
+    ctx.reply(`Was möchtest du mit ${npc.name} tun?`, Markup.inlineKeyboard([
+      [Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎡 Zeit verbringen', `act_spend_${npcId}`)],
+      [Markup.button.callback('💰 Um Geld bitten', `act_askmoney_${npcId}`)],
+      [Markup.button.callback('⬅️ Zurück', 'rel')]
+    ]));
   } catch (err) { console.error(err); }
 });
 
 bot.action('status', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  await ctx.answerCbQuery();
-  ctx.replyWithMarkdown(Render.status(state.persons[state.current_id], state), getMainKeys(state));
+  try {
+    const state = await readSave(ctx.from.id);
+    await ctx.answerCbQuery();
+    ctx.replyWithMarkdown(Render.status(state.persons[state.current_id], state), getMainKeys(state));
+  } catch (err) { console.error(err); }
 });
 
-bot.action('rel', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  if (checkGameOver(state)) return ctx.answerCbQuery("Kein Zugriff.");
-  await ctx.answerCbQuery();
-  const { text, keyboard } = Render.relationships(state);
-  ctx.replyWithMarkdown(text, keyboard);
+bot.action('tree', async (ctx) => {
+  try {
+    const state = await readSave(ctx.from.id);
+    await ctx.answerCbQuery();
+    ctx.replyWithMarkdown(Render.tree(state), getMainKeys(state));
+  } catch (err) { console.error(err); }
 });
 
 bot.action('reset', async (ctx) => {

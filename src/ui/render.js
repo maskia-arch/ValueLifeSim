@@ -2,33 +2,60 @@ const config = require('../config');
 const { Markup } = require('telegraf');
 
 class Render {
+  /**
+   * Zeigt den detaillierten Status des aktuellen Spielers an
+   */
   static status(p, state) {
     if (!p) return "Fehler: Charakterdaten konnten nicht geladen werden.";
     
-    // Land-Emoji Logik (optional erweiterbar)
+    // Land-Emoji Logik
     const flags = { "Deutschland": "🇩🇪", "USA": "🇺🇸", "Schweiz": "🇨🇭", "Türkei": "🇹🇷", "Japan": "🇯🇵" };
     const flag = flags[state.country] || "📍";
 
-    return `✨ *ValueLifeSim v${config.version}*\n\n` + 
+    const lifeStatus = p.isAlive ? "" : "💀 *VERSTORBEN*\n";
+
+    return `✨ *ValueLifeSim v${config.version}*\n` +
+           `${lifeStatus}` + 
            `👤 *Name:* ${p.name || 'Unbekannt'}\n` +
            `🎂 *Alter:* ${p.age}\n` +
            `${flag} *Land:* ${state.country || 'Keines'}\n` +
-           `💰 *Bank:* $${p.money || 0}\n` +
+           `💰 *Bank:* $${p.money.toLocaleString() || 0}\n\n` +
            `🏥 *Gesundheit:* ${p.health}%\n` +
            `😊 *Glück:* ${p.happiness}%\n` +
-           `🎓 *Smarts:* ${p.smarts}% | 🔥 *Heat:* ${p.heat}%`;
+           `🎓 *Smarts:* ${p.smarts}% | 🔥 *Heat:* ${p.heat}%\n` +
+           `🏆 *Ruf:* ${p.reputation || 50}%`;
   }
 
+  /**
+   * Erstellt einen chronologischen Stammbaum (Älteste oben)
+   */
   static tree(state) {
     if (!state || !state.persons) return "Kein Stammbaum verfügbar.";
     
-    let text = `🌳 *Stammbaum (v${config.version})*\n\n`;
-    Object.values(state.persons).forEach(p => {
-      text += `${p.isAlive ? '🟢' : '⚫️'} ${p.name || 'Unbekannt'} (${p.age} J.)\n`;
+    let text = `🌳 *Chronologischer Stammbaum*\n`;
+    text += `________________________________\n\n`;
+
+    // Personen in Array umwandeln und nach Alter sortieren (absteigend)
+    const sortedPersons = Object.values(state.persons).sort((a, b) => b.age - a.age);
+
+    sortedPersons.forEach(p => {
+      const statusIcon = p.isAlive ? '🟢' : '⚫️';
+      const genderIcon = p.gender === 'W' ? '♀' : '♂';
+      const isCurrent = p.id === state.current_id ? " ⭐ (Du)" : "";
+      
+      // Verwandtschaft bestimmen
+      const relation = this.getRelationLabel(p, state);
+
+      text += `${statusIcon} *${p.name || 'Unbekannt'}* (${p.age} J.)${isCurrent}\n`;
+      text += `└─ ${genderIcon} ${relation}\n\n`;
     });
+
     return text;
   }
 
+  /**
+   * Listet alle Beziehungen auf und erstellt Interaktions-Buttons
+   */
   static relationships(state) {
     if (!state || !state.persons) return { text: "Keine Beziehungen gefunden.", keyboard: null };
     
@@ -36,22 +63,20 @@ class Render {
     let text = `👥 *Beziehungen (v${config.version})*\n\n`;
     const buttons = [];
 
+    // Nur NPCs anzeigen (nicht den Spieler selbst)
     for (let id in state.persons) {
       if (id === state.current_id) continue;
       
       const p = state.persons[id];
-      
-      let relation = "Bekannte(r)";
-      if (player && id === player.motherId) relation = "Mutter";
-      if (player && id === player.fatherId) relation = "Vater";
-
+      const relation = this.getRelationLabel(p, state);
       const statusIcon = p.isAlive ? "❤️" : "💀";
       const ageText = p.isAlive ? `${p.age} Jahre` : "Verstorben";
+      const relBar = p.isAlive ? `\n   [${p.relationship}% Vertrauen]` : "";
 
       text += `${statusIcon} *${p.name || 'Unbekannt'}*\n`;
-      text += `└ ${relation} | ${ageText}\n\n`;
+      text += `└ ${relation} | ${ageText}${relBar}\n\n`;
 
-      // Nur für lebende NPCs einen Interaktions-Button hinzufügen
+      // Interaktions-Button nur für lebende NPCs
       if (p.isAlive) {
         buttons.push([Markup.button.callback(`👉 Mit ${p.name} interagieren`, `interact_${id}`)]);
       }
@@ -61,13 +86,26 @@ class Render {
       text += "_Du hast aktuell noch keine bekannten Beziehungen._";
     }
 
-    // Zurück-Button zum Hauptmenü immer unten anfügen
-    buttons.push([Markup.button.callback('⬅️ Zurück', 'main_menu')]);
+    // Zurück-Button führt zum main_menu Handler in der bot.js
+    buttons.push([Markup.button.callback('⬅️ Zurück zum Hauptmenü', 'main_menu')]);
 
     return {
       text: text,
       keyboard: Markup.inlineKeyboard(buttons)
     };
+  }
+
+  /**
+   * Hilfsfunktion zur Ermittlung des Verwandtschaftsverhältnisses
+   */
+  static getRelationLabel(p, state) {
+    const player = state.persons[state.current_id];
+    if (!player) return "Bekannte(r)";
+    if (p.id === state.current_id) return "Selbst";
+    if (p.id === player.motherId) return "Mutter";
+    if (p.id === player.fatherId) return "Vater";
+    if (player.childrenIds && player.childrenIds.includes(p.id)) return "Kind";
+    return "Verwandte(r)";
   }
 }
 
