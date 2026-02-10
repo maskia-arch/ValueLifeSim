@@ -15,8 +15,38 @@
     "min_age": 7,
     "max_age": 99,
     "choices": [
-      { "text": "Einstecken", "response": "Dein Geldbeutel freut sich.", "effect": { "money": 20, "happiness": 5 } },
-      { "text": "Abgeben", "response": "Dein Karma steigt.", "effect": { "happiness": 10, "smarts": 5 } }
+      { "text": "Einstecken", "response": "Dein Geldbeutel freut sich.", "effect": { "money": 20, "happiness": 5, "reputation": -2 } },
+      { "text": "Abgeben", "response": "Ehrlichkeit zahlt sich aus (für dein Karma).", "effect": { "happiness": 10, "smarts": 5, "reputation": 5 } }
+    ]
+  },
+  {
+    "id": "parent_argument",
+    "text": "Du hast deine Hausaufgaben nicht gemacht und deine Eltern sind sauer.",
+    "min_age": 7,
+    "max_age": 16,
+    "choices": [
+      { "text": "Entschuldigen", "response": "Sie verzeihen dir diesmal.", "effect": { "happiness": -5, "reputation": 5 } },
+      { "text": "Widerworte geben", "response": "Hausarrest! Deine Eltern sind enttäuscht.", "effect": { "happiness": -20, "reputation": -10 } }
+    ]
+  },
+  {
+    "id": "stray_cat",
+    "text": "Eine streunende Katze folgt dir nach Hause. Sie sieht hungrig aus.",
+    "min_age": 5,
+    "max_age": 99,
+    "choices": [
+      { "text": "Füttern", "response": "Die Katze schnurrt und du fühlst dich gut.", "effect": { "money": -5, "happiness": 15 } },
+      { "text": "Ignorieren", "response": "Du gehst einfach weiter.", "effect": { "happiness": -5 } }
+    ]
+  },
+  {
+    "id": "school_exam",
+    "text": "Eine wichtige Prüfung steht an. Wie bereitest du dich vor?",
+    "min_age": 10,
+    "max_age": 20,
+    "choices": [
+      { "text": "Hart lernen", "response": "Du schreibst eine 1! Deine Eltern sind stolz.", "effect": { "smarts": 10, "happiness": 5, "reputation": 5 } },
+      { "text": "Spicken", "response": "Du wurdest erwischt! Ärger droht.", "effect": { "smarts": -5, "reputation": -15, "happiness": -10 } }
     ]
   }
 ]

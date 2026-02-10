@@ -14,20 +14,20 @@ class Engine {
         
         // --- NPC LOGIK (Eltern/Freunde) ---
         if (id !== state.current_id) {
-          // Gesundheit schwankt
+          // Gesundheit schwankt leicht
           person.health = Math.min(100, Math.max(0, person.health + (Math.random() * 4 - 2.5)));
           
-          // NEU: Beziehungsverfall (1-3% pro Jahr ohne Interaktion)
+          // Beziehungsverfall (1-3% pro Jahr ohne aktive Pflege)
           const decay = Math.floor(Math.random() * 3) + 1;
           person.relationship = Math.max(0, (person.relationship || 50) - decay);
 
-          // NEU: NPC-Finanzen (Simuliertes Einkommen/Ausgaben)
+          // NPC-Finanzen (Damit "Um Geld bitten" funktioniert)
           if (person.age >= 20 && person.age <= 65) {
-            person.money += Math.floor(Math.random() * 500) + 100; // Gehalt
+            person.money += Math.floor(Math.random() * 500) + 100; // Simuliertes Gehalt
           } else if (person.age > 65) {
-            person.money += Math.floor(Math.random() * 200) + 50;  // Rente
+            person.money += Math.floor(Math.random() * 200) + 50;  // Simuliere Rente
           }
-          person.money = Math.max(0, person.money - 50); // Basis-Lebenskosten
+          person.money = Math.max(0, person.money - 50); // Simuliere Basis-Lebenskosten
         }
 
         // --- TODESLOGIK ---
@@ -53,7 +53,7 @@ class Engine {
 
     const p = state.persons[state.current_id];
 
-    // 2. ZUFALLS-EVENT CHECK
+    // 2. ZUFALLS-EVENT CHECK (25% Chance pro Jahr)
     if (Math.random() < 0.25) {
       try {
         const eventsPath = path.join(process.cwd(), 'data/events.json');
@@ -78,8 +78,10 @@ class Engine {
     const p = state.persons[state.current_id];
     const effects = choice.effect || {};
 
+    // Geld-Effekte (Kein Limit nach oben)
     if (effects.money) p.money += effects.money;
 
+    // Stat-Effekte (Immer zwischen 0 und 100 halten)
     const stats = ['happiness', 'smarts', 'health', 'looks', 'reputation'];
     stats.forEach(stat => {
       if (effects[stat]) {

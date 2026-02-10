@@ -108,6 +108,8 @@ bot.action('age_up', async (ctx) => {
   try {
     await ctx.answerCbQuery();
     const state = await readSave(ctx.from.id);
+    
+    // Engine berechnet das neue Jahr
     const result = Engine.nextYear(state);
     const p = state.persons[state.current_id];
 
@@ -115,6 +117,7 @@ bot.action('age_up', async (ctx) => {
       return ctx.reply(`💀 Du bist gestorben. /start für Neuanfang.`);
     }
 
+    // NPC Tode anzeigen
     if (result.npcDeaths && result.npcDeaths.length > 0) {
       for (const death of result.npcDeaths) {
         await ctx.reply(`🕯 Traurige Nachricht: ${death.name} (${death.relation}) ist verstorben.`);
@@ -122,13 +125,53 @@ bot.action('age_up', async (ctx) => {
     }
 
     if (result.type === 'event') {
-      const choices = result.data.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)]);
-      await ctx.reply(`*Jahr ${p.age}*\n\n${result.data.text}`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(choices) });
+      // Buttons für das Event erstellen
+      const choices = result.data.choices.map((c, i) => [
+        Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)
+      ]);
+      
+      await ctx.reply(`*Jahr ${p.age} - Ereignis!*\n\n${result.data.text}`, { 
+        parse_mode: 'Markdown', 
+        ...Markup.inlineKeyboard(choices) 
+      });
     } else {
       await ctx.reply(`Du bist jetzt ${p.age} Jahre alt.`, mainKeys);
     }
+    
     await writeSave(ctx.from.id, state);
   } catch (err) { console.error(err); }
+});
+
+// KORREKTUR: Handler für Event-Entscheidungen (Choices)
+bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
+  try {
+    const eventId = ctx.match[1];
+    const choiceIdx = parseInt(ctx.match[2]);
+    const state = await readSave(ctx.from.id);
+    
+    // Event-Daten laden, um den Effekt zu finden
+    const eventsPath = path.join(process.cwd(), 'data/events.json');
+    const events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+    const event = events.find(e => e.id === eventId);
+    
+    if (!event) {
+        await ctx.answerCbQuery("Event nicht gefunden.");
+        return;
+    }
+
+    const choice = event.choices[choiceIdx];
+
+    // Effekt via Engine auf den State anwenden
+    Engine.processChoice(state, choice);
+    
+    await ctx.answerCbQuery();
+    await writeSave(ctx.from.id, state);
+    
+    // Antwort senden und Hauptmenü zeigen
+    await ctx.reply(`✅ ${choice.response}`, mainKeys);
+  } catch (err) {
+    console.error("Fehler bei choice action:", err);
+  }
 });
 
 // --- INTERAKTIONS-SYSTEM ---
@@ -195,7 +238,6 @@ bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
   const p = state.persons[state.current_id];
   const npc = state.persons[npcId];
 
-  // Chance basiert auf Beziehung
   const success = Math.random() * 100 < npc.relationship;
 
   if (success && npc.money > 0) {
