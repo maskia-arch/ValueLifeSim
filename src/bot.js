@@ -21,7 +21,7 @@ async function isMessageValid(ctx, state) {
 
   const currentMsgId = ctx.callbackQuery?.message?.message_id;
   if (state.lastMessageId && currentMsgId !== state.lastMessageId) {
-    await ctx.answerCbQuery("⚠️ Diese Nachricht ist veraltet. Bitte nutze das aktuelle Menü unten.", { show_alert: true });
+    await ctx.answerCbQuery("⚠️ Diese Nachricht ist veraltet. Bitte nutze das aktuelle Menü unten!", { show_alert: true });
     return false;
   }
   return true;
@@ -60,14 +60,12 @@ async function runSetup(ctx, state) {
   }
   const p = state.persons[state.current_id];
   
-  // 1. NAME (Vor- und Nachname Pflicht)
   if (!p.name || p.name.trim() === "") {
     state.setupStep = 'name';
     await writeSave(ctx.from.id, state);
     return ctx.reply(`Willkommen! Dein Familienname ist *${state.familyLastName}*.\n\nWie lautet dein vollständiger Name (Vor- und Nachname)?`);
   }
   
-  // 2. GESCHLECHT
   if (!p.gender) {
     state.setupStep = 'gender';
     await writeSave(ctx.from.id, state);
@@ -76,11 +74,9 @@ async function runSetup(ctx, state) {
     ]));
   }
   
-  // 3. LAND
   if (!state.country) {
     state.setupStep = 'country';
     await writeSave(ctx.from.id, state);
-    // Hier nutzen wir die Länderliste aus state.js Logik oder config
     const countries = ["Germany", "USA", "Turkey", "Japan"];
     const countryButtons = countries.map(c => [Markup.button.callback(c, `set_country_${c}`)]);
     return ctx.reply("In welchem Land wirst du geboren?", Markup.inlineKeyboard(countryButtons));
@@ -88,7 +84,6 @@ async function runSetup(ctx, state) {
   
   state.setupComplete = true;
   state.setupStep = 'done';
-  
   if (!state.diary) state.diary = [];
   state.diary.push(`🌟 Geburt: Du wurdest als ${p.name} in ${state.country} geboren.`);
   
@@ -116,14 +111,11 @@ bot.on('text', async (ctx) => {
       const input = ctx.message.text.trim();
       const parts = input.split(' ');
 
-      // Validierung: Mindestens zwei Namen
       if (parts.length < 2) {
         return ctx.reply("❌ Bitte gib sowohl einen Vornamen als auch deinen Nachnamen an.");
       }
 
       const lastName = parts[parts.length - 1];
-      
-      // Validierung: Nachname muss mit Familie übereinstimmen
       if (lastName.toLowerCase() !== state.familyLastName.toLowerCase()) {
         return ctx.reply(`❌ Dein Nachname muss *${state.familyLastName}* lauten, um zu deiner Familie zu gehören.`);
       }
@@ -162,7 +154,7 @@ bot.action('age_up', async (ctx) => {
     }
 
     let msgText = result.npcDeaths.length > 0 
-      ? `Du bist jetzt ${p.age} Jahre alt.\n\nSchwere Zeiten: ${result.npcDeaths.map(d => `${d.name} (${d.relation})`).join(', ')} ist verstorben.`
+      ? `Du bist jetzt ${p.age} Jahre alt.\n\n🕯️ ${result.npcDeaths.map(d => `${d.name} (${d.relation})`).join(', ')} ist verstorben.`
       : `Du bist jetzt ${p.age} Jahre alt.`;
       
     let keys = getMainKeys(state);
@@ -180,10 +172,10 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
     const [_, eventId, choiceIdx] = ctx.match;
     const state = await readSave(ctx.from.id);
     if (!await isMessageValid(ctx, state)) return;
-    if (state.activeEventId !== eventId) return ctx.answerCbQuery("Bereits abgeschlossen.");
-
-    const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
-    const event = events.find(e => e.id === eventId);
+    
+    const eventsPath = path.join(process.cwd(), 'data/events.json');
+    const allEvents = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+    const event = allEvents.find(e => e.id === eventId);
     const choice = event.choices[parseInt(choiceIdx)];
     
     Engine.processChoice(state, choice);
@@ -194,11 +186,12 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
 
 // --- NAVIGATION & STATUS ---
 
-bot.action('diary', async (ctx) => {
+bot.action('main_menu', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
   await ctx.answerCbQuery();
-  await sendUpdate(ctx, state, Render.diary(state), getMainKeys(state));
+  const p = state.persons[state.current_id];
+  await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 });
 
 bot.action('status', async (ctx) => {
@@ -206,6 +199,13 @@ bot.action('status', async (ctx) => {
   if (!await isMessageValid(ctx, state)) return;
   await ctx.answerCbQuery();
   await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
+});
+
+bot.action('diary', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, Render.diary(state), getMainKeys(state));
 });
 
 bot.action('rel', async (ctx) => {
@@ -231,6 +231,66 @@ bot.action('reset', async (ctx) => {
   return runSetup(ctx, state);
 });
 
+// --- INTERAKTIONS-HANDLER ---
+
+bot.action(/interact_(.*)/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  const npc = state.persons[ctx.match[1]];
+  await ctx.answerCbQuery();
+  
+  const text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('💬 Reden', `act_talk_${npc.id}`), Markup.button.callback('🎡 Zeit verbringen', `act_spend_${npc.id}`)],
+    [Markup.button.callback('💰 Um Geld bitten', `act_askmoney_${npc.id}`)],
+    [Markup.button.callback('⬅️ Zurück', 'rel')]
+  ]);
+  
+  await sendUpdate(ctx, state, text, keyboard);
+});
+
+bot.action(/^act_talk_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  const npc = state.persons[ctx.match[1]];
+  const boost = Math.floor(Math.random() * 5) + 3;
+  npc.relationship = Math.min(100, (npc.relationship || 50) + boost);
+  await ctx.answerCbQuery("Gespräch geführt!");
+  await sendUpdate(ctx, state, `💬 Du hast mit ${npc.name} geredet. (+${boost}% Beziehung)`, getMainKeys(state));
+});
+
+bot.action(/^act_spend_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  const p = state.persons[state.current_id];
+  const npc = state.persons[ctx.match[1]];
+  if (p.money < 50) return ctx.answerCbQuery("Zu wenig Geld! (Kosten: 50)", { show_alert: true });
+  p.money -= 50;
+  const boost = Math.floor(Math.random() * 10) + 5;
+  npc.relationship = Math.min(100, (npc.relationship || 50) + boost);
+  await ctx.answerCbQuery("Schöner Tag!");
+  await sendUpdate(ctx, state, `🎡 Du hast Zeit mit ${npc.name} verbracht. (-50, +${boost}% Beziehung)`, getMainKeys(state));
+});
+
+bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  const p = state.persons[state.current_id];
+  const npc = state.persons[ctx.match[1]];
+  const success = Math.random() * 100 < (npc.relationship - 20);
+  if (success && npc.money > 20) {
+    const amount = Math.floor(Math.random() * 50) + 10;
+    npc.money -= amount; p.money += amount;
+    npc.relationship = Math.max(0, npc.relationship - 5);
+    await ctx.answerCbQuery("Erfolg!");
+    await sendUpdate(ctx, state, `💰 ${npc.name} hat dir ${amount} gegeben!`, getMainKeys(state));
+  } else {
+    npc.relationship = Math.max(0, npc.relationship - 10);
+    await ctx.answerCbQuery("Abgelehnt!");
+    await sendUpdate(ctx, state, `❌ ${npc.name} wollte dir kein Geld geben.`, getMainKeys(state));
+  }
+});
+
 // --- SETUP ACTIONS ---
 
 bot.action(/set_gender_(.*)/, async (ctx) => {
@@ -251,22 +311,6 @@ bot.action(/set_country_(.*)/, async (ctx) => {
     try { await ctx.deleteMessage(); } catch(e) {}
     return runSetup(ctx, state);
   }
-});
-
-bot.action(/interact_(.*)/, async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  if (!await isMessageValid(ctx, state)) return;
-  const npc = state.persons[ctx.match[1]];
-  await ctx.answerCbQuery();
-  
-  const text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('💬 Reden', `act_talk_${npc.id}`), Markup.button.callback('🎡 Zeit verbringen', `act_spend_${npc.id}`)],
-    [Markup.button.callback('💰 Um Geld bitten', `act_askmoney_${npc.id}`)],
-    [Markup.button.callback('⬅️ Zurück', 'rel')]
-  ]);
-  
-  await sendUpdate(ctx, state, text, keyboard);
 });
 
 bot.on('callback_query', async (ctx) => { await ctx.answerCbQuery(); });

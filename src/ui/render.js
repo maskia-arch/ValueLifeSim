@@ -1,5 +1,7 @@
 const config = require('../config');
 const { Markup } = require('telegraf');
+const fs = require('fs');
+const path = require('path');
 
 class Render {
   /**
@@ -20,13 +22,27 @@ class Render {
   }
 
   /**
-   * Zeigt den detaillierten Status inkl. Beziehungsstatus
+   * Zeigt den detaillierten Status inkl. Beziehungsstatus und DisplayName
    */
   static status(p, state) {
     if (!p) return "Fehler: Charakterdaten konnten nicht geladen werden.";
     
-    const flags = { "Germany": "🇩🇪", "USA": "🇺🇸", "Turkey": "🇹🇷", "Japan": "🇯🇵" };
-    const flag = flags[state.country] || "📍";
+    // Länderdaten laden, um display_name zu finden
+    let countryDisplayName = state.country || 'Keines';
+    let flag = "📍";
+    
+    try {
+      const countriesPath = path.join(process.cwd(), 'data/countries.json');
+      const countries = JSON.parse(fs.readFileSync(countriesPath, 'utf8'));
+      const countryObj = countries.find(c => c.name === state.country);
+      if (countryObj) {
+        countryDisplayName = countryObj.display_name;
+        flag = countryObj.flag;
+      }
+    } catch (err) {
+      console.error("Fehler beim Laden der Länder für Render:", err);
+    }
+
     const lifeStatus = p.isAlive ? "" : "💀 *VERSTORBEN*\n";
     const moneyText = this.formatMoney(p.money, state.country);
 
@@ -37,7 +53,7 @@ class Render {
            `${lifeStatus}` + 
            `👤 *Name:* ${p.name || 'Unbekannt'}\n` +
            `🎂 *Alter:* ${p.age}\n` +
-           `${flag} *Land:* ${state.country || 'Keines'}\n` +
+           `${flag} *Land:* ${countryDisplayName}\n` +
            `${maritalText}` +
            `💰 *Bank:* ${moneyText}\n\n` +
            `🏥 *Gesundheit:* ${p.health}%\n` +
@@ -69,7 +85,7 @@ class Render {
     let text = `👥 *Beziehungen & Freunde (v${config.version})*\n\n`;
     const buttons = [];
 
-    // Sortierung: Partner zuerst, dann Eltern, dann Kinder, dann Freunde
+    // Personen filtern (alle außer der Spieler selbst)
     const personIds = Object.keys(state.persons).filter(id => id !== state.current_id);
 
     personIds.forEach(id => {
