@@ -1,14 +1,22 @@
 {
-  "male": [
-    "Lukas", "Thomas", "Andreas", "Michael", "Stefan", "Christian", 
-    "James", "Robert", "William", "David", "Hakan", "Emre", "Kenji", "Hiroshi"
-  ],
-  "female": [
-    "Julia", "Sarah", "Laura", "Monika", "Sabine", "Elena", 
-    "Mary", "Jennifer", "Patricia", "Linda", "Ayse", "Fatma", "Yuki", "Hana"
-  ],
-  "lastnames": [
-    "Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Meyer", 
-    "Smith", "Johnson", "Williams", "Brown", "Yilmaz", "Kaya", "Sato", "Tanaka"
-  ]
+  "germany": {
+    "male": ["Lukas", "Thomas", "Andreas", "Michael", "Stefan", "Christian", "Maximilian", "Jan"],
+    "female": ["Julia", "Sarah", "Laura", "Monika", "Sabine", "Elena", "Hannah", "Leonie"],
+    "lastnames": ["Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Meyer", "Wagner", "Becker"]
+  },
+  "usa": {
+    "male": ["James", "Robert", "William", "David", "Michael", "John", "Ethan", "Mason"],
+    "female": ["Mary", "Jennifer", "Patricia", "Linda", "Elizabeth", "Barbara", "Emma", "Olivia"],
+    "lastnames": ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis"]
+  },
+  "turkey": {
+    "male": ["Hakan", "Emre", "Mehmet", "Can", "Okan", "Burak", "Arda", "Enes"],
+    "female": ["Ayse", "Fatma", "Zeynep", "Elif", "Merve", "Gamze", "Ece", "Selin"],
+    "lastnames": ["Yilmaz", "Kaya", "Demir", "Sahin", "Celik", "Yildiz", "Arslan", "Erdogan"]
+  },
+  "japan": {
+    "male": ["Kenji", "Hiroshi", "Takumi", "Yuto", "Haruki", "Ren", "Sota", "Kaito"],
+    "female": ["Yuki", "Hana", "Aoi", "Himari", "Mei", "Sakura", "Akari", "Ichika"],
+    "lastnames": ["Sato", "Tanaka", "Suzuki", "Takahashi", "Watanabe", "Ito", "Yamamoto", "Nakamura"]
+  }
 }

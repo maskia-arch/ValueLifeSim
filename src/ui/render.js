@@ -7,40 +7,38 @@ class Render {
    */
   static formatMoney(amount, country) {
     const localeMap = {
-      "Deutschland": { code: "de-DE", symbol: "€" },
+      "Germany": { code: "de-DE", symbol: "€" },
       "USA": { code: "en-US", symbol: "$" },
-      "Schweiz": { code: "de-CH", symbol: "CHF" },
-      "Türkei": { code: "tr-TR", symbol: "₺" },
+      "Turkey": { code: "tr-TR", symbol: "₺" },
       "Japan": { code: "ja-JP", symbol: "¥" }
     };
 
-    const config = localeMap[country] || { code: "en-US", symbol: "$" };
+    const conf = localeMap[country] || { code: "en-US", symbol: "$" };
+    const formattedNumber = new Intl.NumberFormat(conf.code).format(amount || 0);
     
-    // Formatiert die Zahl (z.B. 1.000,00 für DE oder 1,000.00 für US)
-    const formattedNumber = new Intl.NumberFormat(config.code).format(amount || 0);
-    
-    // Position des Symbols (In DE/CH meist dahinter, bei $ davor)
-    return country === "USA" ? `${config.symbol}${formattedNumber}` : `${formattedNumber} ${config.symbol}`;
+    return country === "USA" ? `${conf.symbol}${formattedNumber}` : `${formattedNumber} ${conf.symbol}`;
   }
 
   /**
-   * Zeigt den detaillierten Status inkl. lokaler Währung
+   * Zeigt den detaillierten Status inkl. Beziehungsstatus
    */
   static status(p, state) {
     if (!p) return "Fehler: Charakterdaten konnten nicht geladen werden.";
     
-    const flags = { "Deutschland": "🇩🇪", "USA": "🇺🇸", "Schweiz": "🇨🇭", "Türkei": "🇹🇷", "Japan": "🇯🇵" };
+    const flags = { "Germany": "🇩🇪", "USA": "🇺🇸", "Turkey": "🇹🇷", "Japan": "🇯🇵" };
     const flag = flags[state.country] || "📍";
     const lifeStatus = p.isAlive ? "" : "💀 *VERSTORBEN*\n";
-
-    // Dynamische Währung nutzen
     const moneyText = this.formatMoney(p.money, state.country);
+
+    // NEU: Beziehungsstatus (Heirat)
+    const maritalText = p.maritalStatus ? `💍 *Status:* ${p.maritalStatus}\n` : "";
 
     return `✨ *ValueLifeSim v${config.version}*\n` +
            `${lifeStatus}` + 
            `👤 *Name:* ${p.name || 'Unbekannt'}\n` +
            `🎂 *Alter:* ${p.age}\n` +
            `${flag} *Land:* ${state.country || 'Keines'}\n` +
+           `${maritalText}` +
            `💰 *Bank:* ${moneyText}\n\n` +
            `🏥 *Gesundheit:* ${p.health}%\n` +
            `😊 *Glück:* ${p.happiness}%\n` +
@@ -49,79 +47,50 @@ class Render {
   }
 
   /**
-   * Zeigt das Tagebuch (Chronik der Ereignisse)
+   * Tagebuch Anzeige
    */
   static diary(state) {
     if (!state.diary || state.diary.length === 0) {
       return "📖 *Dein Tagebuch*\n\n_Noch keine Einträge vorhanden._";
     }
-
-    let text = "📖 *Deine Lebenschronik*\n";
-    text += "________________________________\n\n";
-    
-    // Die letzten 15 Einträge anzeigen, neueste oben
+    let text = "📖 *Deine Lebenschronik*\n________________________________\n\n";
     const entries = [...state.diary].reverse().slice(0, 15);
-    
-    entries.forEach(entry => {
-      text += `• ${entry}\n`;
-    });
-
+    entries.forEach(entry => { text += `• ${entry}\n`; });
     return text;
   }
 
   /**
-   * Erstellt einen chronologischen Stammbaum
-   */
-  static tree(state) {
-    if (!state || !state.persons) return "Kein Stammbaum verfügbar.";
-    
-    let text = `🌳 *Chronologischer Stammbaum*\n`;
-    text += `________________________________\n\n`;
-
-    const sortedPersons = Object.values(state.persons).sort((a, b) => b.age - a.age);
-
-    sortedPersons.forEach(p => {
-      const statusIcon = p.isAlive ? '🟢' : '⚫️';
-      const genderIcon = p.gender === 'W' ? '♀' : '♂';
-      const isCurrent = p.id === state.current_id ? " ⭐ (Du)" : "";
-      const relation = this.getRelationLabel(p, state);
-
-      text += `${statusIcon} *${p.name || 'Unbekannt'}* (${p.age} J.)${isCurrent}\n`;
-      text += `└─ ${genderIcon} ${relation}\n\n`;
-    });
-
-    return text;
-  }
-
-  /**
-   * Beziehungsliste mit Fortschrittsbalken
+   * Beziehungsliste inkl. Freunde und Familienstand
    */
   static relationships(state) {
     if (!state || !state.persons) return { text: "Keine Beziehungen gefunden.", keyboard: null };
     
     const player = state.persons[state.current_id];
-    let text = `👥 *Beziehungen (v${config.version})*\n\n`;
+    let text = `👥 *Beziehungen & Freunde (v${config.version})*\n\n`;
     const buttons = [];
 
-    for (let id in state.persons) {
-      if (id === state.current_id) continue;
-      
+    // Sortierung: Partner zuerst, dann Eltern, dann Kinder, dann Freunde
+    const personIds = Object.keys(state.persons).filter(id => id !== state.current_id);
+
+    personIds.forEach(id => {
       const p = state.persons[id];
       const relation = this.getRelationLabel(p, state);
       const statusIcon = p.isAlive ? "❤️" : "💀";
       
-      // Visueller Beziehungsbalken (Emoji-basiert)
       const barLength = 5;
       const filled = Math.round((p.relationship / 100) * barLength);
       const bar = "🟢".repeat(filled) + "⚪".repeat(barLength - filled);
 
-      text += `${statusIcon} *${p.name || 'Unbekannt'}*\n`;
+      // Spezielle Anzeige für Partner
+      const partnerNote = p.id === player.partnerId ? "💍 " : "";
+
+      text += `${statusIcon} ${partnerNote}*${p.name}*\n`;
       text += `└ ${relation} | ${bar} ${p.relationship}%\n\n`;
 
       if (p.isAlive) {
         buttons.push([Markup.button.callback(`👉 Mit ${p.name} interagieren`, `interact_${id}`)]);
       }
-    }
+    });
 
     buttons.push([Markup.button.callback('⬅️ Zurück zum Hauptmenü', 'main_menu')]);
 
@@ -131,14 +100,36 @@ class Render {
     };
   }
 
+  /**
+   * Stammbaum mit Heirats-Logik
+   */
+  static tree(state) {
+    if (!state || !state.persons) return "Kein Stammbaum verfügbar.";
+    let text = `🌳 *Chronologischer Stammbaum*\n________________________________\n\n`;
+    const sortedPersons = Object.values(state.persons).sort((a, b) => b.age - a.age);
+
+    sortedPersons.forEach(p => {
+      const statusIcon = p.isAlive ? '🟢' : '⚫️';
+      const isCurrent = p.id === state.current_id ? " ⭐" : "";
+      const relation = this.getRelationLabel(p, state);
+      const marriedInfo = p.maritalStatus ? ` (${p.maritalStatus})` : "";
+
+      text += `${statusIcon} *${p.name}* (${p.age} J.)${isCurrent}\n`;
+      text += `└─ ${relation}${marriedInfo}\n\n`;
+    });
+    return text;
+  }
+
   static getRelationLabel(p, state) {
     const player = state.persons[state.current_id];
     if (!player) return "Bekannte(r)";
     if (p.id === state.current_id) return "Selbst";
+    if (p.id === player.partnerId) return player.gender === 'W' ? "Ehemann" : "Ehefrau";
     if (p.id === player.motherId) return "Mutter";
     if (p.id === player.fatherId) return "Vater";
     if (player.childrenIds && player.childrenIds.includes(p.id)) return "Kind";
-    return "Verwandte(r)";
+    if (player.friendsIds && player.friendsIds.includes(p.id)) return "Freund(in)";
+    return "Bekannte(r)";
   }
 }
 
