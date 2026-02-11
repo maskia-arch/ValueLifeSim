@@ -21,6 +21,9 @@ async function isMessageValid(ctx, state) {
   return true;
 }
 
+/**
+ * Löscht die letzte temporäre Benachrichtigung (Feedback-Texte)
+ */
 async function clearTemporary(ctx, state) {
   if (state.lastTempId) {
     try {
@@ -30,6 +33,9 @@ async function clearTemporary(ctx, state) {
   }
 }
 
+/**
+ * Sendet eine flüchtige Nachricht UNTER dem Pin
+ */
 async function sendTemporary(ctx, state, text) {
   await clearTemporary(ctx, state); 
   const msg = await ctx.replyWithMarkdown(text);
@@ -46,6 +52,9 @@ async function bulkDelete(ctx, startId, count = 25) {
   }
 }
 
+/**
+ * Aktualisiert ausschließlich den GEPINNTEN Status-Screen
+ */
 async function sendUpdate(ctx, state, text, keyboard) {
   const userId = ctx.from.id;
 
@@ -80,11 +89,9 @@ const getMainKeys = (state) => {
   const p = state.persons[state.current_id];
   
   const rows = [[Markup.button.callback('➕ Ein Jahr älter', 'age_up')]];
-
   const socialRow = [Markup.button.callback('👥 Beziehungen', 'rel')];
   if (p.age >= 16) socialRow.push(Markup.button.callback('🎡 Aktivitäten', 'activities'));
   rows.push(socialRow);
-
   rows.push([Markup.button.callback('📖 Tagebuch', 'diary'), Markup.button.callback('🌳 Stammbaum', 'tree')]);
   rows.push([Markup.button.callback('⚙️ Reset', 'reset')]);
   
@@ -130,7 +137,7 @@ async function runSetup(ctx, state) {
   await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 }
 
-// --- GAMEPLAY & SOCIAL ---
+// --- GAMEPLAY ACTIONS ---
 
 bot.action('age_up', async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -160,7 +167,6 @@ bot.action('age_up', async (ctx) => {
   await sendUpdate(ctx, state, text, keys);
 });
 
-// --- FIX: EVENT CHOICE HANDLER ---
 bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   const [_, eventId, choiceIdx] = ctx.match;
   const state = await readSave(ctx.from.id);
@@ -171,25 +177,14 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   const choice = event.choices[parseInt(choiceIdx)];
   
   Engine.processChoice(state, choice);
-  
   await ctx.answerCbQuery();
-  // Feedback unter den Pin senden
   await sendTemporary(ctx, state, `✅ ${choice.response}`);
   
-  // Pin auf Hauptmenü zurücksetzen
   const p = state.persons[state.current_id];
   await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 });
 
-bot.action(/^set_sex_(.*)$/, async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  if (!state || !await isMessageValid(ctx, state)) return;
-  const p = state.persons[state.current_id];
-  p.sexuality = ctx.match[1];
-  p.hasSetSexuality = true;
-  await ctx.answerCbQuery();
-  await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
-});
+// --- INTERAKTIONS-HANDLER ---
 
 bot.action(/^act_talk_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -213,8 +208,33 @@ bot.action(/^act_gift_(.*)$/, async (ctx) => {
   p.money -= 20;
   npc.relationship = Math.min(100, (npc.relationship || 0) + 15);
   
-  await ctx.answerCbQuery("🎁 Geschenk übergeben.");
+  await ctx.answerCbQuery();
   await sendTemporary(ctx, state, `🎁 Du hast ${npc.name} ein Geschenk gekauft.`);
+  
+  const { text, keyboard } = Render.relationships(state);
+  await sendUpdate(ctx, state, text, keyboard);
+});
+
+// FIX: Handler für "Nach Geld fragen"
+bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const npcId = ctx.match[1];
+  const npc = state.persons[npcId];
+  const p = state.persons[state.current_id];
+  
+  const successChance = (npc.relationship || 0) / 100;
+  
+  if (Math.random() < successChance) {
+    const amount = Math.floor(Math.random() * 40) + 10;
+    p.money += amount;
+    npc.relationship = Math.max(0, npc.relationship - 5);
+    await ctx.answerCbQuery(`✅ Erfolg! +${amount}€`);
+    await sendTemporary(ctx, state, `💰 ${npc.name} hat dir ${amount}€ gegeben.`);
+  } else {
+    npc.relationship = Math.max(0, npc.relationship - 10);
+    await ctx.answerCbQuery("❌ Abgelehnt", { show_alert: true });
+    await sendTemporary(ctx, state, `❌ ${npc.name} wollte dir kein Geld geben.`);
+  }
   
   const { text, keyboard } = Render.relationships(state);
   await sendUpdate(ctx, state, text, keyboard);
@@ -231,12 +251,8 @@ bot.action(/^interact_(.*)$/, async (ctx) => {
   let text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
   const buttons = [[Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎁 Geschenk', `act_gift_${npcId}`)]];
   if (isParent) buttons.push([Markup.button.callback('💰 Nach Geld fragen', `act_askmoney_${npcId}`)]);
-  if (p.age >= 16 && !isParent) {
-    if (isPartner) buttons.push([Markup.button.callback('💋 Küssen', `act_kiss_${npcId}`)]);
-    else if (npc.relationship >= 80) buttons.push([Markup.button.callback('❤️ Antrag', `act_ask_rel_${npcId}`)]);
-  }
-  buttons.push([Markup.button.callback('⬅️ Zurück', 'rel')]);
   
+  buttons.push([Markup.button.callback('⬅️ Zurück', 'rel')]);
   await clearTemporary(ctx, state); 
   await sendUpdate(ctx, state, text, Markup.inlineKeyboard(buttons));
 });
@@ -297,6 +313,15 @@ bot.on('text', async (ctx) => {
     await writeSave(ctx.from.id, state);
     return runSetup(ctx, state);
   }
+});
+
+bot.action(/set_sex_(.*)/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const p = state.persons[state.current_id];
+  p.sexuality = ctx.match[1];
+  p.hasSetSexuality = true;
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 });
 
 bot.action(/set_country_(.*)/, async (ctx) => {
