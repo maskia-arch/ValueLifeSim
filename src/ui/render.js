@@ -22,7 +22,7 @@ class Render {
   }
 
   /**
-   * Zeigt den detaillierten Status inkl. Schwangerschaft und Partner
+   * Zeigt den detaillierten Status inkl. Schwangerschaft, Partner und Orientierung
    */
   static status(p, state) {
     if (!p) return "Fehler: Charakterdaten konnten nicht geladen werden.";
@@ -43,11 +43,16 @@ class Render {
     const lifeStatus = p.isAlive ? "" : "💀 *VERSTORBEN*\n";
     const moneyText = this.formatMoney(p.money, state.country);
 
-    // NEU: Status-Icons (Heirat & Schwangerschaft)
+    // Status-Icons (Heirat & Schwangerschaft)
     const maritalText = p.maritalStatus ? `💍 *Status:* ${p.maritalStatus}\n` : "";
     const pregnancyText = p.isPregnant ? `🤰 *Status:* Schwanger (Geburt im nächsten Jahr)\n` : "";
     
-    // Fix für undefined Heat
+    // NEU: Anzeige der Orientierung ab Alter 16
+    const sexualityIcons = { 'hetero': '👫 Hetero', 'homo': '👬 Homo', 'bi': '🌍 Bi' };
+    const sexualityText = (p.age >= 16 && p.hasSetSexuality) 
+      ? `🌈 *Orientierung:* ${sexualityIcons[p.sexuality] || p.sexuality}\n` 
+      : "";
+
     const heatVal = p.heat !== undefined ? p.heat : 0;
 
     return `✨ *ValueLifeSim v${config.version}*\n` +
@@ -55,7 +60,7 @@ class Render {
            `👤 *Name:* ${p.name}\n` +
            `🎂 *Alter:* ${p.age}\n` +
            `${flag} *Land:* ${countryDisplayName}\n` +
-           `${maritalText}${pregnancyText}` +
+           `${maritalText}${pregnancyText}${sexualityText}` +
            `💰 *Bank:* ${moneyText}\n\n` +
            `🏥 *Gesundheit:* ${p.health}%\n` +
            `😊 *Glück:* ${p.happiness}%\n` +
@@ -71,12 +76,13 @@ class Render {
     return `📱 *Finder - Neues Profil*\n\n` +
            `${genderIcon} *Name:* ${npc.name}\n` +
            `🎂 *Alter:* ${npc.age}\n` +
-           `✨ *Looks:* ${npc.looks || 0}%\n\n` +
-           `_„Interessiert an einem Treffen?“_`;
+           `✨ *Looks:* ${npc.looks || 0}%\n` +
+           `❤️ *Interesse:* ${npc.relationship}%\n\n` +
+           `_„Suchst du jemanden wie mich?“_`;
   }
 
   /**
-   * Beziehungsliste mit Fix für Eltern und Freunde
+   * Beziehungsliste
    */
   static relationships(state) {
     if (!state || !state.persons) return { text: "Keine Beziehungen.", keyboard: null };
@@ -85,14 +91,12 @@ class Render {
     let text = `👥 *Beziehungen & Familie (v${config.version})*\n\n`;
     const buttons = [];
 
-    // Alle Personen außer dem Spieler selbst
     const personIds = Object.keys(state.persons).filter(id => id !== state.current_id);
 
     personIds.forEach(id => {
       const p = state.persons[id];
       const relation = this.getRelationLabel(p, state);
       
-      // Nur anzeigen, wenn es eine relevante Beziehung ist (Eltern, Partner, Kind oder Freund)
       const isRelevant = id === player.motherId || 
                          id === player.fatherId || 
                          id === player.partnerId || 
@@ -126,25 +130,6 @@ class Render {
     return { text: text, keyboard: Markup.inlineKeyboard(buttons) };
   }
 
-  /**
-   * Stammbaum
-   */
-  static tree(state) {
-    if (!state || !state.persons) return "Kein Stammbaum verfügbar.";
-    let text = `🌳 *Chronologischer Stammbaum*\n________________________________\n\n`;
-    const sortedPersons = Object.values(state.persons).sort((a, b) => b.age - a.age);
-
-    sortedPersons.forEach(p => {
-      const statusIcon = p.isAlive ? '🟢' : '⚫️';
-      const isCurrent = p.id === state.current_id ? " ⭐" : "";
-      const relation = this.getRelationLabel(p, state);
-      
-      text += `${statusIcon} *${p.name}* (${p.age} J.)${isCurrent}\n`;
-      text += `└─ ${relation}\n\n`;
-    });
-    return text;
-  }
-
   static getRelationLabel(p, state) {
     const player = state.persons[state.current_id];
     if (!player) return "Bekannte(r)";
@@ -159,6 +144,22 @@ class Render {
     if (player.childrenIds && player.childrenIds.includes(p.id)) return "Kind";
     if (player.friendsIds && player.friendsIds.includes(p.id)) return "Freund(in)";
     return "Bekannte(r)";
+  }
+
+  static tree(state) {
+    if (!state || !state.persons) return "Kein Stammbaum verfügbar.";
+    let text = `🌳 *Chronologischer Stammbaum*\n________________________________\n\n`;
+    const sortedPersons = Object.values(state.persons).sort((a, b) => b.age - a.age);
+
+    sortedPersons.forEach(p => {
+      const statusIcon = p.isAlive ? '🟢' : '⚫️';
+      const isCurrent = p.id === state.current_id ? " ⭐" : "";
+      const relation = this.getRelationLabel(p, state);
+      
+      text += `${statusIcon} *${p.name}* (${p.age} J.)${isCurrent}\n`;
+      text += `└─ ${relation}\n\n`;
+    });
+    return text;
   }
 
   static diary(state) {

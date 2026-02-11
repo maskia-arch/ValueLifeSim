@@ -172,7 +172,6 @@ bot.action('age_up', async (ctx) => {
   await sendUpdate(ctx, state, msgText, keys);
 });
 
-// --- NEU: EVENT CHOICE HANDLER (FIX FÜR HÄNGENDE EREIGNISSE) ---
 bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   const [_, eventId, choiceIdx] = ctx.match;
   const state = await readSave(ctx.from.id);
@@ -189,7 +188,6 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   await sendUpdate(ctx, state, `✅ ${choice.response}`, getMainKeys(state));
 });
 
-// --- SEXUALITÄTS-HANDLER ---
 bot.action(/^set_sex_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!state) return;
@@ -197,7 +195,7 @@ bot.action(/^set_sex_(.*)$/, async (ctx) => {
   p.sexuality = ctx.match[1];
   p.hasSetSexuality = true;
   await ctx.answerCbQuery("Präferenz gespeichert!");
-  await sendUpdate(ctx, state, `✨ Deine Orientierung wurde auf ${ctx.match[1]} gesetzt.`, getMainKeys(state));
+  await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 });
 
 // --- AKTIVITÄTEN-HANDLER ---
@@ -208,14 +206,41 @@ bot.action('activities', async (ctx) => {
   
   const text = "🎡 *Was möchtest du unternehmen?*";
   const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('💃 Disco', 'act_disco'), Markup.button.callback('📱 Finder', 'act_finder')],
+    [Markup.button.callback('💃 Disco (100€)', 'act_disco'), Markup.button.callback('📱 Finder', 'act_finder')],
     [Markup.button.callback('⬅️ Zurück', 'main_menu')]
   ]);
   await sendUpdate(ctx, state, text, keyboard);
 });
 
-bot.action('act_disco', async (ctx) => { ctx.answerCbQuery("Disco folgt in Kürze!"); });
-bot.action('act_finder', async (ctx) => { ctx.answerCbQuery("Finder folgt in Kürze!"); });
+bot.action('act_disco', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const p = state.persons[state.current_id];
+  if (p.money < 100) return ctx.answerCbQuery("Zu wenig Geld! (100€ benötigt)", { show_alert: true });
+  
+  p.money -= 100;
+  const encounter = Engine.generateEncounter(state); 
+  state.persons[encounter.id] = encounter;
+  
+  const text = `💃 *Im Club:* Du triffst ${encounter.name} auf der Tanzfläche!`;
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('💘 Anflirten', `interact_${encounter.id}`)],
+    [Markup.button.callback('⬅️ Zurück', 'activities')]
+  ]);
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, text, keyboard);
+});
+
+bot.action('act_finder', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const match = Engine.generateEncounter(state, true); 
+  state.persons[match.id] = match;
+  
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, Render.finderProfile(match), Markup.inlineKeyboard([
+    [Markup.button.callback('✅ Like', `interact_${match.id}`), Markup.button.callback('❌ Skip', 'act_finder')],
+    [Markup.button.callback('⬅️ Zurück', 'activities')]
+  ]));
+});
 
 // --- INTERAKTIONS-HANDLER ---
 bot.action(/^interact_(.*)$/, async (ctx) => {
