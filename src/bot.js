@@ -68,7 +68,10 @@ const getMainKeys = (state) => {
   
   const rows = [[Markup.button.callback('➕ Ein Jahr älter', 'age_up')]];
   const socialRow = [Markup.button.callback('👥 Beziehungen', 'rel')];
+  
+  // Aktivitäten-Button nur ab 16 Jahren anzeigen
   if (p.age >= 16) socialRow.push(Markup.button.callback('🎡 Aktivitäten', 'activities'));
+  
   rows.push(socialRow);
   rows.push([Markup.button.callback('📖 Tagebuch', 'diary'), Markup.button.callback('🌳 Stammbaum', 'tree')]);
   rows.push([Markup.button.callback('⚙️ Reset', 'reset')]);
@@ -115,6 +118,43 @@ async function runSetup(ctx, state) {
   await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 }
 
+// --- AKTIVITÄTEN HANDLER ---
+
+bot.action('act_disco', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  const p = state.persons[state.current_id];
+
+  if (p.money < 100) return ctx.answerCbQuery("⚠️ Zu wenig Geld (100€ benötigt)!", { show_alert: true });
+  
+  p.money -= 100;
+  const encounter = Engine.generateEncounter(state);
+  state.persons[encounter.id] = encounter;
+  
+  await ctx.answerCbQuery(`💃 Im Club triffst du ${encounter.name}!`, { show_alert: true });
+  
+  const text = `💃 *Club-Begegnung*\n\nDu hast im Club jemanden kennengelernt: *${encounter.name}*. Was möchtest du tun?`;
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('💘 Anflirten', `interact_${encounter.id}`)],
+    [Markup.button.callback('⬅️ Zurück', 'activities')]
+  ]);
+  await sendUpdate(ctx, state, text, keyboard);
+});
+
+bot.action('act_finder', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  
+  const match = Engine.generateEncounter(state, true);
+  state.persons[match.id] = match;
+  
+  await ctx.answerCbQuery("📱 Finder: Ein neues Profil gefunden!", { show_alert: false });
+  await sendUpdate(ctx, state, Render.finderProfile(match), Markup.inlineKeyboard([
+    [Markup.button.callback('✅ Like', `interact_${match.id}`), Markup.button.callback('❌ Skip', 'act_finder')],
+    [Markup.button.callback('⬅️ Zurück', 'activities')]
+  ]));
+});
+
 // --- GAMEPLAY ACTIONS ---
 
 bot.action('age_up', async (ctx) => {
@@ -153,15 +193,13 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   const choice = event.choices[parseInt(choiceIdx)];
   
   Engine.processChoice(state, choice);
-  
-  // Feedback als ALERT anzeigen
   await ctx.answerCbQuery(`✅ ${choice.response}`, { show_alert: true });
   
   const p = state.persons[state.current_id];
   await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 });
 
-// --- INTERAKTIONS-HANDLER (MIT ALERTS) ---
+// --- INTERAKTIONS-HANDLER ---
 
 bot.action(/^act_talk_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -169,7 +207,6 @@ bot.action(/^act_talk_(.*)$/, async (ctx) => {
   npc.relationship = Math.min(100, (npc.relationship || 0) + 5);
   
   await ctx.answerCbQuery(`💬 Du hast dich gut mit ${npc.name} unterhalten.`, { show_alert: true });
-  
   const { text, keyboard } = Render.relationships(state);
   await sendUpdate(ctx, state, text, keyboard);
 });
@@ -185,7 +222,6 @@ bot.action(/^act_gift_(.*)$/, async (ctx) => {
   npc.relationship = Math.min(100, (npc.relationship || 0) + 15);
   
   await ctx.answerCbQuery(`🎁 Du hast ${npc.name} ein Geschenk gekauft.`, { show_alert: true });
-  
   const { text, keyboard } = Render.relationships(state);
   await sendUpdate(ctx, state, text, keyboard);
 });
@@ -195,9 +231,7 @@ bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
   const npc = state.persons[ctx.match[1]];
   const p = state.persons[state.current_id];
   
-  const successChance = (npc.relationship || 0) / 100;
-  
-  if (Math.random() < successChance) {
+  if (Math.random() < (npc.relationship / 100)) {
     const amount = Math.floor(Math.random() * 40) + 10;
     p.money += amount;
     npc.relationship = Math.max(0, npc.relationship - 5);
@@ -206,7 +240,6 @@ bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
     npc.relationship = Math.max(0, npc.relationship - 10);
     await ctx.answerCbQuery(`❌ Abgelehnt! ${npc.name} wollte dir kein Geld geben.`, { show_alert: true });
   }
-  
   const { text, keyboard } = Render.relationships(state);
   await sendUpdate(ctx, state, text, keyboard);
 });
@@ -217,16 +250,12 @@ bot.action(/^interact_(.*)$/, async (ctx) => {
   const npc = state.persons[npcId];
   const p = state.persons[state.current_id];
   const isParent = (npcId === p.motherId || npcId === p.fatherId);
-  const isPartner = (npcId === p.partnerId);
   
   await ctx.answerCbQuery();
   let text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
   const buttons = [[Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎁 Geschenk', `act_gift_${npcId}`)]];
   if (isParent) buttons.push([Markup.button.callback('💰 Nach Geld fragen', `act_askmoney_${npcId}`)]);
-  if (p.age >= 16 && !isParent) {
-    if (isPartner) buttons.push([Markup.button.callback('💋 Küssen', `act_kiss_${npcId}`)]);
-    else if (npc.relationship >= 80) buttons.push([Markup.button.callback('❤️ Antrag', `act_ask_rel_${npcId}`)]);
-  }
+  
   buttons.push([Markup.button.callback('⬅️ Zurück', 'rel')]);
   await sendUpdate(ctx, state, text, Markup.inlineKeyboard(buttons));
 });

@@ -35,9 +35,11 @@ class Render {
     const sexualityIcons = { 'hetero': '👫 Hetero', 'homo': '👬 Homo', 'bi': '🌍 Bi' };
     const sexualityText = (p.age >= 16 && p.hasSetSexuality) ? `🌈 *Orientierung:* ${sexualityIcons[p.sexuality] || p.sexuality}\n` : "";
 
-    return `✨ *ValueLifeSim v${config.version}* | 👤 Name: ${p.name}\n` +
+    // Name auf die nächste Zeile verschoben für bessere Übersichtlichkeit
+    return `✨ *ValueLifeSim v${config.version}*\n` +
            `________________________________\n\n` +
-           `${lifeStatus}🎂 *Alter:* ${p.age}\n` +
+           `${lifeStatus}👤 *Name:* \n└ ${p.name}\n\n` +
+           `🎂 *Alter:* ${p.age}\n` +
            `${flag} *Land:* ${countryDisplayName}\n${maritalText}${pregnancyText}${sexualityText}` +
            `💰 *Bank:* ${this.formatMoney(p.money, state.country)}\n\n` +
            `🏥 *Gesundheit:* ${p.health}%\n😊 *Glück:* ${p.happiness}%\n` +
@@ -52,37 +54,22 @@ class Render {
            `_„Bereit für ein Abenteuer?“_`;
   }
 
-  /**
-   * Beziehungsliste mit hierarchischer Sortierung (v0.0.3)
-   */
   static relationships(state) {
     if (!state || !state.persons) return { text: "Keine Beziehungen.", keyboard: null };
     const player = state.persons[state.current_id];
     let text = `👥 *Beziehungen & Familie*\n________________________________\n\n`;
     
     const getRank = (npc, id) => {
-      // 1. Großeltern (Eltern der Eltern)
       const m = state.persons[player.motherId];
       const f = state.persons[player.fatherId];
       if ((m && (id === m.motherId || id === m.fatherId)) || 
           (f && (id === f.motherId || id === f.fatherId))) return 1;
-
-      // 2. Eltern
       if (id === player.motherId || id === player.fatherId) return 2;
-
-      // 3. Partner
       if (id === player.partnerId) return 3;
-
-      // 4. Kinder
       if (player.childrenIds && player.childrenIds.includes(id)) return 4;
-
-      // 5. Geschwister
       if ((npc.motherId === player.motherId || npc.fatherId === player.fatherId) && id !== state.current_id) return 5;
-
-      // 6. Freunde
       if (player.friendsIds && player.friendsIds.includes(id)) return 6;
-
-      return 7; // Sonstige
+      return 7;
     };
 
     const personIds = Object.keys(state.persons)
@@ -93,8 +80,6 @@ class Render {
     personIds.forEach(id => {
       const p = state.persons[id];
       const relation = this.getRelationLabel(p, state);
-      
-      // Nur relevante Personen anzeigen
       const isRelevant = id === player.motherId || id === player.fatherId || id === player.partnerId || 
                          (player.childrenIds && player.childrenIds.includes(id)) || 
                          (player.friendsIds && player.friendsIds.includes(id)) || p.relationship > 10;
