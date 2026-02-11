@@ -35,7 +35,6 @@ class Render {
     const sexualityIcons = { 'hetero': '👫 Hetero', 'homo': '👬 Homo', 'bi': '🌍 Bi' };
     const sexualityText = (p.age >= 16 && p.hasSetSexuality) ? `🌈 *Orientierung:* ${sexualityIcons[p.sexuality] || p.sexuality}\n` : "";
 
-    // Name auf die nächste Zeile verschoben für bessere Übersichtlichkeit
     return `✨ *ValueLifeSim v${config.version}*\n` +
            `________________________________\n\n` +
            `${lifeStatus}👤 *Name:* \n└ ${p.name}\n\n` +
@@ -88,7 +87,7 @@ class Render {
         const statusIcon = p.isAlive ? (id === player.partnerId ? "💍" : "❤️") : "💀";
         const filled = Math.round(((p.relationship || 50) / 100) * 5);
         const bar = "🟢".repeat(filled) + "⚪".repeat(5 - filled);
-        const romance = (p.romance > 10) ? ` | 🔥 ${p.romance}%` : "";
+        const romance = (p.romance && p.romance > 10) ? ` | 🔥 ${p.romance}%` : "";
 
         text += `${statusIcon} *${p.name}*\n└ ${relation} | ${bar} ${p.relationship}%${romance}\n\n`;
         
@@ -134,6 +133,7 @@ class Render {
   static diary(state) {
     let text = "📖 *Lebenschronik*\n________________________________\n\n";
     if (!state.diary || state.diary.length === 0) return text + "_Noch keine Einträge vorhanden._";
+    // Zeigt die letzten 15 Einträge in umgekehrter Reihenfolge (neueste oben)
     [...state.diary].reverse().slice(0, 15).forEach(e => { text += `• ${e}\n`; });
     return text;
   }
