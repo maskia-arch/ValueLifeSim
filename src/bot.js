@@ -93,26 +93,36 @@ bot.start(async (ctx) => {
 async function runSetup(ctx, state) {
   if (!state || !state.persons || !state.current_id) return ctx.reply("Fehler. /start nutzen.");
   const p = state.persons[state.current_id];
+  
   if (!p.name) {
     state.setupStep = 'name';
     await writeSave(ctx.from.id, state);
     return ctx.reply("Willkommen! Wie lautet dein Name (Vor- & Nachname)?");
   }
+  
   if (!p.gender) {
     state.setupStep = 'gender';
     await writeSave(ctx.from.id, state);
     return ctx.reply(`Hallo ${p.name}! Wähle dein Geschlecht:`, Markup.inlineKeyboard([[Markup.button.callback('♂ Männlich', 'set_gender_M'), Markup.button.callback('♀ Weiblich', 'set_gender_W')]]));
   }
+
   if (!state.country) {
     state.setupStep = 'country';
     await writeSave(ctx.from.id, state);
     const countries = ["Germany", "USA", "Turkey", "Japan"];
     return ctx.reply("In welchem Land wirst du geboren?", Markup.inlineKeyboard(countries.map(c => [Markup.button.callback(c, `set_country_${c}`)])));
   }
+  
+  // SETUP ABSCHLIESSEN
   state.setupComplete = true;
   state.diary.push(`🌟 Du wurdest als ${p.name} in ${state.country} geboren.`);
-  await bulkDelete(ctx, ctx.callbackQuery?.message?.message_id || state.lastMessageId, 15);
+  
+  // TIMING-FIX: Erst senden und pinnen, damit der Chat nie leer ist
   await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
+  
+  // Dann die Erstellungs-Nachrichten löschen
+  const currentMsgId = ctx.callbackQuery?.message?.message_id || state.lastMessageId;
+  await bulkDelete(ctx, currentMsgId, 15);
 }
 
 // --- GAMEPLAY ACTIONS ---
@@ -394,4 +404,6 @@ bot.action('diary', async (ctx) => {
 });
 
 bot.on('callback_query', (ctx) => ctx.answerCbQuery());
+
+// START MIT DYNAMISCHER VERSION AUS CONFIG
 bot.launch().then(() => console.log(`ValueLifeSim v${config.version} online!`));
