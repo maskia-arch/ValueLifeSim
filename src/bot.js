@@ -14,6 +14,7 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 async function isMessageValid(ctx, state) {
   if (!state.setupComplete) return true; 
   const currentMsgId = ctx.callbackQuery?.message?.message_id;
+  // Validierung gegen die gepinnte Nachricht
   if (state.pinMessageId && currentMsgId !== state.pinMessageId) {
     await ctx.answerCbQuery("⚠️ Bitte nutze das angeheftete Menü oben.", { show_alert: true });
     return false;
@@ -31,7 +32,7 @@ async function bulkDelete(ctx, startId, count = 20) {
 }
 
 /**
- * Aktualisiert den angehefteten Status oder sendet/pinnt ihn neu
+ * Kernfunktion für das UI: Aktualisiert die gepinnte Nachricht
  */
 async function sendUpdate(ctx, state, text, keyboard) {
   const userId = ctx.from.id;
@@ -45,7 +46,7 @@ async function sendUpdate(ctx, state, text, keyboard) {
       await writeSave(userId, state);
       return;
     } catch (err) {
-      // Falls Edit fehlschlägt (z.B. Nachricht gelöscht), im Code fortfahren und neu senden
+      // Falls Edit fehlschlägt (z.B. Nachricht gelöscht)
     }
   }
 
@@ -65,14 +66,31 @@ async function sendUpdate(ctx, state, text, keyboard) {
 const getMainKeys = (state) => {
   if (state.isGameOver) return Markup.inlineKeyboard([[Markup.button.callback('⚙️ Neustart', 'reset')]]);
   const p = state.persons[state.current_id];
+  
   const rows = [
-    [Markup.button.callback('➕ Ein Jahr älter', 'age_up')],
-    [Markup.button.callback('👥 Beziehungen', 'rel'), Markup.button.callback('🎡 Aktivitäten', 'activities')]
+    [Markup.button.callback('➕ Ein Jahr älter', 'age_up')]
   ];
+
+  // Dynamische Zeile: Aktivitäten erst ab 16 Jahren
+  const socialRow = [Markup.button.callback('👥 Beziehungen', 'rel')];
+  if (p.age >= 16) {
+    socialRow.push(Markup.button.callback('🎡 Aktivitäten', 'activities'));
+  }
+  rows.push(socialRow);
+
   rows.push([Markup.button.callback('📖 Tagebuch', 'diary'), Markup.button.callback('🌳 Stammbaum', 'tree')]);
   rows.push([Markup.button.callback('⚙️ Reset', 'reset')]);
+  
   return Markup.inlineKeyboard(rows);
 };
+
+// --- HANDLERS ---
+
+bot.start(async (ctx) => {
+  const state = initGameState(ctx.from.id);
+  await writeSave(ctx.from.id, state);
+  return runSetup(ctx, state);
+});
 
 async function runSetup(ctx, state) {
   if (!state || !state.persons || !state.current_id) return ctx.reply("Fehler. /start nutzen.");
@@ -106,79 +124,73 @@ async function runSetup(ctx, state) {
   const currentMsgId = ctx.callbackQuery?.message?.message_id || state.lastMessageId;
   await bulkDelete(ctx, currentMsgId, 15);
   
-  // Erste Statusnachricht senden, die dann gepinnt wird
   await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 }
 
-// --- COMMANDS ---
+// --- SEXUALITÄT HANDLER (NEU/FIXED) ---
+bot.action(/^set_sex_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!state || !await isMessageValid(ctx, state)) return;
+  const p = state.persons[state.current_id];
+  
+  p.sexuality = ctx.match[1];
+  p.hasSetSexuality = true;
+  state.setupStep = 'done';
 
-bot.start(async (ctx) => {
-  const state = initGameState(ctx.from.id);
-  await writeSave(ctx.from.id, state);
-  return runSetup(ctx, state);
+  await ctx.answerCbQuery(`Orientierung: ${ctx.match[1]}`);
+  // Kehre zum Hauptmenü zurück
+  await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 });
-
-bot.on('text', async (ctx) => {
-  const userId = ctx.from.id;
-  let state = await readSave(userId);
-  if (!state) return;
-
-  if (!state.setupComplete && state.setupStep === 'name') {
-    const input = ctx.message.text.trim();
-    if (input.split(' ').length < 2) return ctx.reply("❌ Bitte gib Vor- & Nachnamen an.");
-    state.familyLastName = input.split(' ').pop();
-    state.persons[state.current_id].name = input;
-    state.setupStep = 'gender';
-    state.lastMessageId = ctx.message.message_id;
-    await writeSave(userId, state);
-    return runSetup(ctx, state);
-  }
-});
-
-// --- GAMEPLAY ACTIONS ---
 
 bot.action('age_up', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
   await ctx.answerCbQuery();
+  
   const result = Engine.nextYear(state);
   const p = state.persons[state.current_id];
 
+  // Spezialfall 16 Jahre: Sexualitätsabfrage im gepinnten Menü
   if (p.age === 16 && !p.hasSetSexuality) {
-    state.setupStep = 'sexuality';
-    await writeSave(ctx.from.id, state);
-    return ctx.reply("✨ Du wirst erwachsen! Was ist deine Orientierung?", Markup.inlineKeyboard([
+    const text = "✨ Du wirst erwachsen! Was ist deine Orientierung?";
+    const keys = Markup.inlineKeyboard([
       [Markup.button.callback('👫 Hetero', 'set_sex_hetero')],
       [Markup.button.callback('👬 Homo', 'set_sex_homo')],
       [Markup.button.callback('🌍 Bi', 'set_sex_bi')]
-    ]));
+    ]);
+    return sendUpdate(ctx, state, text, keys);
   }
 
   let msgText = Render.status(p, state);
   if (result.type === 'event') {
     msgText = `*Ereignis!*\n\n${result.data.text}`;
-    const keys = Markup.inlineKeyboard(result.data.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)]));
+    const keys = Markup.inlineKeyboard(result.data.choices.map((c, i) => [
+      Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)
+    ]));
     return sendUpdate(ctx, state, msgText, keys);
   }
   
   await sendUpdate(ctx, state, msgText, getMainKeys(state));
 });
 
-bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
-  const [_, eventId, choiceIdx] = ctx.match;
+// --- NAVIGATION ---
+
+bot.action('main_menu', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
-
-  const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
-  const event = events.find(e => e.id === eventId);
-  const choice = event.choices[parseInt(choiceIdx)];
-  Engine.processChoice(state, choice);
-  
-  await ctx.answerCbQuery();
   await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
 });
 
-// --- NAVIGATION & INTERAKTION ---
+bot.action('activities', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  const text = "🎡 *Was möchtest du unternehmen?*";
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('💃 Disco (100€)', 'act_disco'), Markup.button.callback('📱 Finder', 'act_finder')],
+    [Markup.button.callback('⬅️ Zurück', 'main_menu')]
+  ]);
+  await sendUpdate(ctx, state, text, keyboard);
+});
 
 bot.action('rel', async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -187,34 +199,17 @@ bot.action('rel', async (ctx) => {
   await sendUpdate(ctx, state, text, keyboard);
 });
 
-bot.action('activities', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  if (!await isMessageValid(ctx, state)) return;
-  const text = "🎡 *Aktivitäten*";
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('💃 Disco (100€)', 'act_disco'), Markup.button.callback('📱 Finder', 'act_finder')],
-    [Markup.button.callback('⬅️ Zurück', 'main_menu')]
-  ]);
-  await sendUpdate(ctx, state, text, keyboard);
-});
-
-bot.action('main_menu', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  if (!await isMessageValid(ctx, state)) return;
-  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
-});
+// ... Restliche Handler (Reset, Country, Gender etc.) bleiben gleich
 
 bot.action('reset', async (ctx) => {
   const userId = ctx.from.id;
   const state = await readSave(userId);
-  
   if (state && state.pinMessageId) {
     try {
       await ctx.telegram.unpinChatMessage(userId, { message_id: state.pinMessageId });
       await ctx.telegram.deleteMessage(userId, state.pinMessageId);
     } catch (e) {}
   }
-  
   await bulkDelete(ctx, ctx.callbackQuery.message.message_id, 35);
   const newState = initGameState(userId);
   await writeSave(userId, newState);
@@ -222,22 +217,44 @@ bot.action('reset', async (ctx) => {
   return runSetup(ctx, newState);
 });
 
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id;
+  let state = await readSave(userId);
+  if (!state) return;
+  if (!state.setupComplete && state.setupStep === 'name') {
+    const input = ctx.message.text.trim();
+    if (input.split(' ').length < 2) return ctx.reply("❌ Vor- & Nachnamen!");
+    state.familyLastName = input.split(' ').pop();
+    state.persons[state.current_id].name = input;
+    state.setupStep = 'gender';
+    await writeSave(userId, state);
+    return runSetup(ctx, state);
+  }
+});
+
 bot.action(/set_country_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   state.country = ctx.match[1];
   finalizeParentsCulture(state, state.country);
-  await ctx.answerCbQuery();
   return runSetup(ctx, state);
 });
 
 bot.action(/set_gender_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   state.persons[state.current_id].gender = ctx.match[1].includes('M') ? 'M' : 'W';
-  await ctx.answerCbQuery();
   return runSetup(ctx, state);
+});
+
+bot.action('tree', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  await sendUpdate(ctx, state, Render.tree(state), getMainKeys(state));
+});
+
+bot.action('diary', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  await sendUpdate(ctx, state, Render.diary(state), getMainKeys(state));
 });
 
 bot.on('callback_query', async (ctx) => { await ctx.answerCbQuery(); });
 
-bot.launch();
-module.exports = bot;
+bot.launch

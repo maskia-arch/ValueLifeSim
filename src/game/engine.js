@@ -55,29 +55,36 @@ class Engine {
       if (person.isAlive) {
         person.age += 1;
         
+        // ZWANGS-FIX: Initialisierung fehlender Stats für alle NPCs
         person.heat = person.heat || 0;
         person.money = person.money || 0;
         person.happiness = person.happiness || 100;
         person.health = person.health || 100;
         person.romance = person.romance || 0;
+        person.smarts = person.smarts || 50;
+        person.looks = person.looks || 50;
 
         if (id !== state.current_id) {
+          // Gesundheitsschwankungen NPCs
           person.health = Math.min(100, Math.max(0, person.health + (Math.random() * 4 - 2.5)));
           
           const isFriend = (player.friendsIds || []).includes(id);
           const isPartner = player.partnerId === id;
           const isParent = (id === player.motherId || id === player.fatherId);
           
+          // Beziehungsverfall
           let decayFactor = isParent ? 0.5 : 1;
           const decay = (isFriend || isPartner) ? Math.floor(Math.random() * 2 * decayFactor) : Math.floor(Math.random() * 3) + 1;
           person.relationship = Math.max(0, (person.relationship || 50) - decay);
 
+          // Einkommen/Kosten NPCs
           if (person.age >= 20 && person.age <= 65) {
             person.money += Math.floor((Math.random() * 500 + 100) * countryData.salary_multiplier);
           }
           person.money = Math.max(0, person.money - (50 * countryData.cost_of_living));
         }
 
+        // Todeslogik
         let deathChance = 0;
         if (person.age > 70) deathChance += (person.age - 70) * 0.05;
         if (person.health < 20) deathChance += 0.15;
@@ -105,6 +112,7 @@ class Engine {
 
     if (birthEvent) return { ...birthEvent, npcDeaths };
 
+    // --- 3. Event Check ---
     if (Math.random() < 0.25) {
       try {
         const eventsPath = path.join(process.cwd(), 'data/events.json');
@@ -122,6 +130,8 @@ class Engine {
     return { type: 'none', npcDeaths: npcDeaths };
   }
 
+  // --- HILFSMETHODEN FÜR ENCOUNTER & SOCIAL ---
+
   static generateEncounter(state, useSexualityFilter = false) {
     const player = state.persons[state.current_id];
     let targetGender = Math.random() > 0.5 ? 'M' : 'W';
@@ -136,19 +146,20 @@ class Engine {
 
     const npcData = getRandomName(targetGender, state.country);
     const npc = createPerson(npcData.full, targetGender, state.country);
+    
     npc.age = Math.max(16, player.age + (Math.floor(Math.random() * 7) - 3));
     npc.relationship = Math.floor(Math.random() * 20) + 10; 
     npc.looks = Math.floor(Math.random() * 80) + 20;       
     npc.romance = 0;
+    
     return npc;
   }
 
-  // --- NEU: ROMANTIK LOGIK FÜR v0.0.2g ---
   static attemptRelationship(state, npcId) {
     const player = state.persons[state.current_id];
     const npc = state.persons[npcId];
-    
-    // Chance steigt mit Beziehungslevel (z.B. 100% Beziehung = fast sicher, 80% = riskant)
+    if (!npc) return { success: false };
+
     const chance = npc.relationship / 100;
     const success = Math.random() < chance;
 
@@ -169,18 +180,18 @@ class Engine {
   static attemptOneNightStand(state, npcId) {
     const player = state.persons[state.current_id];
     const npc = state.persons[npcId];
+    if (!npc) return { success: false };
     
-    // Chance basiert auf Looks des Spielers und Zufall
     const chance = (player.looks || 50) / 150 + 0.2;
     const success = Math.random() < chance;
 
     if (success) {
       player.happiness = Math.min(100, player.happiness + 15);
-      state.diary.push(`🔥 Alter ${player.age}: Du hattest ein leidenschaftliches Abenteuer mit ${npc.name}.`);
+      state.diary.push(`🔥 Alter ${player.age}: Ein leidenschaftliches Abenteuer mit ${npc.name}.`);
       return { success: true };
     } else {
       player.happiness = Math.max(0, player.happiness - 10);
-      state.diary.push(`❌ Alter ${player.age}: ${npc.name} hatte kein Interesse an einem One Night Stand.`);
+      state.diary.push(`❌ Alter ${player.age}: ${npc.name} hatte kein Interesse.`);
       return { success: false };
     }
   }
