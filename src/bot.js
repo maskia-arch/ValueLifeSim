@@ -21,9 +21,6 @@ async function isMessageValid(ctx, state) {
   return true;
 }
 
-/**
- * Löscht die letzte temporäre Benachrichtigung (Feedback-Texte)
- */
 async function clearTemporary(ctx, state) {
   if (state.lastTempId) {
     try {
@@ -33,10 +30,6 @@ async function clearTemporary(ctx, state) {
   }
 }
 
-/**
- * Sendet eine flüchtige Nachricht UNTER dem Pin (für Interaktions-Feedback)
- * Verschwindet beim nächsten Altern oder einer neuen Interaktion.
- */
 async function sendTemporary(ctx, state, text) {
   await clearTemporary(ctx, state); 
   const msg = await ctx.replyWithMarkdown(text);
@@ -53,9 +46,6 @@ async function bulkDelete(ctx, startId, count = 25) {
   }
 }
 
-/**
- * Kernfunktion für das UI: Aktualisiert ausschließlich den GEPINNTEN Status-Screen
- */
 async function sendUpdate(ctx, state, text, keyboard) {
   const userId = ctx.from.id;
 
@@ -147,7 +137,7 @@ bot.action('age_up', async (ctx) => {
   if (!await isMessageValid(ctx, state)) return;
   
   await ctx.answerCbQuery();
-  await clearTemporary(ctx, state); // Feedback-Texte löschen beim Altern
+  await clearTemporary(ctx, state); 
 
   const result = Engine.nextYear(state);
   const p = state.persons[state.current_id];
@@ -168,6 +158,27 @@ bot.action('age_up', async (ctx) => {
     keys = Markup.inlineKeyboard(result.data.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)]));
   }
   await sendUpdate(ctx, state, text, keys);
+});
+
+// --- FIX: EVENT CHOICE HANDLER ---
+bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
+  const [_, eventId, choiceIdx] = ctx.match;
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+
+  const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
+  const event = events.find(e => e.id === eventId);
+  const choice = event.choices[parseInt(choiceIdx)];
+  
+  Engine.processChoice(state, choice);
+  
+  await ctx.answerCbQuery();
+  // Feedback unter den Pin senden
+  await sendTemporary(ctx, state, `✅ ${choice.response}`);
+  
+  // Pin auf Hauptmenü zurücksetzen
+  const p = state.persons[state.current_id];
+  await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 });
 
 bot.action(/^set_sex_(.*)$/, async (ctx) => {
@@ -226,7 +237,7 @@ bot.action(/^interact_(.*)$/, async (ctx) => {
   }
   buttons.push([Markup.button.callback('⬅️ Zurück', 'rel')]);
   
-  await clearTemporary(ctx, state); // Text löschen beim Wechsel der Ansicht
+  await clearTemporary(ctx, state); 
   await sendUpdate(ctx, state, text, Markup.inlineKeyboard(buttons));
 });
 
