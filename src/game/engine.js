@@ -127,6 +127,35 @@ class Engine {
     return { type: 'none', npcDeaths: npcDeaths };
   }
 
+  // --- NEU: NPC GENERATOR FÜR SOCIAL-FEATURES ---
+  static generateEncounter(state, useSexualityFilter = false) {
+    const player = state.persons[state.current_id];
+    let targetGender = Math.random() > 0.5 ? 'M' : 'W';
+
+    // Filter-Logik für Finder (Dating-App)
+    if (useSexualityFilter && player.hasSetSexuality) {
+      if (player.sexuality === 'hetero') {
+        targetGender = (player.gender === 'M') ? 'W' : 'M';
+      } else if (player.sexuality === 'homo') {
+        targetGender = player.gender;
+      }
+      // Bei 'bi' bleibt targetGender zufällig 50/50
+    }
+
+    const npcData = getRandomName(targetGender, state.country);
+    const npc = createPerson(npcData.full, targetGender, state.country);
+    
+    // Alter an den Spieler anpassen (+/- 3 Jahre)
+    npc.age = Math.max(16, player.age + (Math.floor(Math.random() * 7) - 3));
+    
+    // Initialisierung wichtiger Dating-Attribute
+    npc.relationship = Math.floor(Math.random() * 20) + 10; // Startwert 10-30%
+    npc.looks = Math.floor(Math.random() * 80) + 20;       // Optik 20-100%
+    npc.romance = 0;
+    
+    return npc;
+  }
+
   static checkHeritage(state) {
     const player = state.persons[state.current_id];
     const children = (player.childrenIds || [])
@@ -158,15 +187,11 @@ class Engine {
 
     // --- FIX: Freund-Hinzufügen Logik ---
     if (effects.add_friend) {
-      const gender = Math.random() > 0.5 ? 'M' : 'W';
-      const npcData = getRandomName(gender, state.country);
-      const friend = createPerson(npcData.full, gender, state.country);
-      
-      friend.age = Math.max(0, p.age + (Math.floor(Math.random() * 5) - 2));
+      const friend = this.generateEncounter(state);
       friend.relationship = 85; // Höherer Startwert für "Event-Freunde"
       
       state.persons[friend.id] = friend;
-      p.friendsIds.push(friend.id); // ID sicher pushen
+      p.friendsIds.push(friend.id); 
     }
 
     state.diary.push(`📝 Alter ${p.age}: ${choice.response}`);

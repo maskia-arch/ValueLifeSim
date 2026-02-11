@@ -218,6 +218,7 @@ bot.action('act_disco', async (ctx) => {
   if (p.money < 100) return ctx.answerCbQuery("Zu wenig Geld! (100€ benötigt)", { show_alert: true });
   
   p.money -= 100;
+  // Nutzt generateEncounter aus der neuen engine.js
   const encounter = Engine.generateEncounter(state); 
   state.persons[encounter.id] = encounter;
   
@@ -232,6 +233,7 @@ bot.action('act_disco', async (ctx) => {
 
 bot.action('act_finder', async (ctx) => {
   const state = await readSave(ctx.from.id);
+  // Nutzt generateEncounter mit Sexualitäts-Filter
   const match = Engine.generateEncounter(state, true); 
   state.persons[match.id] = match;
   
@@ -342,7 +344,8 @@ bot.action(/set_country_(.*)/, async (ctx) => {
 
 bot.action(/set_gender_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
-  state.persons[state.current_id].gender = ctx.match[1];
+  // Match auf M oder W korrigiert
+  state.persons[state.current_id].gender = ctx.match[1].includes('M') ? 'M' : 'W';
   await ctx.answerCbQuery();
   return runSetup(ctx, state);
 });

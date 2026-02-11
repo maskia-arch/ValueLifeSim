@@ -73,16 +73,16 @@ class Render {
    */
   static finderProfile(npc) {
     const genderIcon = npc.gender === 'W' ? '👩' : '👨';
-    return `📱 *Finder - Neues Profil*\n\n` +
+    return `📱 *Finder - Neues Profil*\n________________________________\n\n` +
            `${genderIcon} *Name:* ${npc.name}\n` +
            `🎂 *Alter:* ${npc.age}\n` +
            `✨ *Looks:* ${npc.looks || 0}%\n` +
-           `❤️ *Interesse:* ${npc.relationship}%\n\n` +
+           `❤️ *Interesse:* ${npc.relationship || 0}%\n\n` +
            `_„Suchst du jemanden wie mich?“_`;
   }
 
   /**
-   * Beziehungsliste
+   * Beziehungsliste mit Fix für Eltern, Freunde und neue Begegnungen
    */
   static relationships(state) {
     if (!state || !state.persons) return { text: "Keine Beziehungen.", keyboard: null };
@@ -97,11 +97,13 @@ class Render {
       const p = state.persons[id];
       const relation = this.getRelationLabel(p, state);
       
+      // Relevanz-Check: Eltern, Partner, Kinder, Freunde oder neue Flirts aus Disco/Finder
       const isRelevant = id === player.motherId || 
                          id === player.fatherId || 
                          id === player.partnerId || 
                          (player.childrenIds && player.childrenIds.includes(id)) ||
-                         (player.friendsIds && player.friendsIds.includes(id));
+                         (player.friendsIds && player.friendsIds.includes(id)) ||
+                         (p.relationship > 15); // Zeigt auch neue Bekanntschaften an
 
       if (isRelevant) {
         let statusIcon = p.isAlive ? "❤️" : "💀";

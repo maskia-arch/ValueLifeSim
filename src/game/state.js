@@ -40,14 +40,15 @@ function finalizeParentsCulture(state, country) {
   mother.name = mData.full;
   father.name = fData.full;
 
-  if (mother.partnerId === father.id) {
-    mother.maritalStatus = `Verheiratet mit ${father.name}`;
-    father.maritalStatus = `Verheiratet mit ${mother.name}`;
-  }
+  // Verknüpfung der Eltern als Partner
+  mother.partnerId = father.id;
+  father.partnerId = mother.id;
+  mother.maritalStatus = `Verheiratet mit ${father.name}`;
+  father.maritalStatus = `Verheiratet mit ${mother.name}`;
 }
 
 /**
- * Erstellt eine Person mit erweiterten v0.0.2 Attributen.
+ * Erstellt eine Person mit erweiterten v0.0.2e Attributen.
  */
 function createPerson(name, gender = null, country = 'germany', parents = { m: null, f: null }, inherited = 0) {
   return {
@@ -59,23 +60,27 @@ function createPerson(name, gender = null, country = 'germany', parents = { m: n
     health: 100,
     happiness: 100,
     smarts: Math.floor(Math.random() * 101),
-    looks: Math.floor(Math.random() * 101),
+    looks: Math.floor(Math.random() * 101), // Wichtig für Finder-Dating
+    heat: 0,                                // Bekanntheit/Attraktivität
     reputation: 50,
     relationship: 80, 
-    romance: 0,       
+    romance: 0,                             // NEU: Basis für romantische Level
     isAlive: true,
     motherId: parents.m,
     fatherId: parents.f,
     partnerId: null,      
     maritalStatus: null,  
     sexuality: 'hetero', 
-    hasSetSexuality: false, // NEU: Verhindert Dating-Events und zeigt Setup-Abfrage ab Alter 16
+    hasSetSexuality: false, 
     isPregnant: false,   
     childrenIds: [],
     friendsIds: []        
   };
 }
 
+/**
+ * Initialisiert den globalen Spielzustand.
+ */
 function initGameState(userId) {
   const mother = createPerson(null, "W");
   mother.age = Math.floor(Math.random() * 15) + 20;
@@ -88,7 +93,7 @@ function initGameState(userId) {
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.2", 
+    schema_version: "0.0.2e", 
     setupComplete: false,
     setupStep: 'name',
     country: null, 
