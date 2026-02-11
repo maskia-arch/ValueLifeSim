@@ -11,6 +11,9 @@ class Engine {
     }
 
     if (!state.diary) state.diary = [];
+    // Sicherheitscheck für Arrays
+    if (!player.friendsIds) player.friendsIds = [];
+    if (!player.childrenIds) player.childrenIds = [];
 
     const npcDeaths = [];
     const countries = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/countries.json'), 'utf8'));
@@ -35,7 +38,10 @@ class Engine {
           if (person.id === state.current_id || person.id === player.partnerId) {
             player.childrenIds.push(baby.id);
             const partner = state.persons[player.partnerId];
-            if (partner) partner.childrenIds.push(baby.id);
+            if (partner) {
+                if (!partner.childrenIds) partner.childrenIds = [];
+                partner.childrenIds.push(baby.id);
+            }
             
             birthEvent = { type: 'birth', babyId: baby.id, gender: gender };
             state.diary.push(`👶 Alter ${player.age}: Nachwuchs! Ein ${gender === 'W' ? 'Mädchen' : 'Junge'} wurde geboren.`);
@@ -50,15 +56,23 @@ class Engine {
       if (person.isAlive) {
         person.age += 1;
         
-        // Heat-Fix: Sicherstellen, dass heat existiert
-        if (person.heat === undefined) person.heat = 0;
+        // ZWANGS-FIX für alle Statuswerte (verhindert undefined in der UI)
+        person.heat = person.heat || 0;
+        person.money = person.money || 0;
+        person.happiness = person.happiness || 100;
+        person.health = person.health || 100;
+        person.romance = person.romance || 0;
 
         if (id !== state.current_id) {
           person.health = Math.min(100, Math.max(0, person.health + (Math.random() * 4 - 2.5)));
           
           const isFriend = (player.friendsIds || []).includes(id);
           const isPartner = player.partnerId === id;
-          const decay = (isFriend || isPartner) ? Math.floor(Math.random() * 2) : Math.floor(Math.random() * 3) + 1;
+          const isParent = (id === player.motherId || id === player.fatherId);
+          
+          // Beziehungsverfall (Eltern verfallen langsamer)
+          let decayFactor = isParent ? 0.5 : 1;
+          const decay = (isFriend || isPartner) ? Math.floor(Math.random() * 2 * decayFactor) : Math.floor(Math.random() * 3) + 1;
           person.relationship = Math.max(0, (person.relationship || 50) - decay);
 
           if (person.age >= 20 && person.age <= 65) {
@@ -115,7 +129,7 @@ class Engine {
 
   static checkHeritage(state) {
     const player = state.persons[state.current_id];
-    const children = player.childrenIds
+    const children = (player.childrenIds || [])
       .map(id => state.persons[id])
       .filter(c => c && c.isAlive);
 
@@ -130,9 +144,11 @@ class Engine {
 
   static processChoice(state, choice) {
     const p = state.persons[state.current_id];
+    if (!p.friendsIds) p.friendsIds = [];
+    
     const effects = choice.effect || {};
 
-    // Standard-Effekte anwenden
+    // Standard-Effekte
     if (effects.money) p.money += effects.money;
     ['happiness', 'smarts', 'health', 'looks', 'reputation', 'heat'].forEach(stat => {
       if (effects[stat] !== undefined) {
@@ -140,22 +156,17 @@ class Engine {
       }
     });
 
-    // --- NEU: Freund-Hinzufügen Logik ---
+    // --- FIX: Freund-Hinzufügen Logik ---
     if (effects.add_friend) {
       const gender = Math.random() > 0.5 ? 'M' : 'W';
       const npcData = getRandomName(gender, state.country);
       const friend = createPerson(npcData.full, gender, state.country);
       
-      // Alter anpassen (+/- 2 Jahre vom Spieler)
       friend.age = Math.max(0, p.age + (Math.floor(Math.random() * 5) - 2));
-      friend.relationship = 70; // Startwert
+      friend.relationship = 85; // Höherer Startwert für "Event-Freunde"
       
-      // In State speichern
       state.persons[friend.id] = friend;
-      
-      // In die Freundesliste des Spielers eintragen
-      if (!p.friendsIds) p.friendsIds = [];
-      p.friendsIds.push(friend.id);
+      p.friendsIds.push(friend.id); // ID sicher pushen
     }
 
     state.diary.push(`📝 Alter ${p.age}: ${choice.response}`);

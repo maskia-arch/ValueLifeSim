@@ -172,7 +172,7 @@ bot.action('age_up', async (ctx) => {
   await sendUpdate(ctx, state, msgText, keys);
 });
 
-// --- NEU: SEXUALITÄTS-HANDLER ---
+// --- SEXUALITÄTS-HANDLER ---
 
 bot.action(/^set_sex_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -184,7 +184,7 @@ bot.action(/^set_sex_(.*)$/, async (ctx) => {
   await sendUpdate(ctx, state, `✨ Deine Orientierung wurde auf ${ctx.match[1]} gesetzt.`, getMainKeys(state));
 });
 
-// --- NEU: AKTIVITÄTEN-HANDLER ---
+// --- AKTIVITÄTEN-HANDLER ---
 
 bot.action('activities', async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -199,35 +199,80 @@ bot.action('activities', async (ctx) => {
   await sendUpdate(ctx, state, text, keyboard);
 });
 
-// Platzhalter für Disco/Finder Logik (muss in bot.js oder engine.js definiert sein)
-bot.action('act_disco', async (ctx) => { ctx.answerCbQuery("Disco folgt in Kürze!"); });
-bot.action('act_finder', async (ctx) => { ctx.answerCbQuery("Finder folgt in Kürze!"); });
+// Finder/Disco Logik Implementierung
+bot.action('act_disco', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const p = state.persons[state.current_id];
+  if (p.money < 100) return ctx.answerCbQuery("Zu wenig Geld! (Kosten: 100€)", { show_alert: true });
+  
+  p.money -= 100;
+  // Logik zur Zufallsbegegnung hier einfügen...
+  ctx.answerCbQuery("Viel Spaß in der Disco! (-100€)");
+  await sendUpdate(ctx, state, "💃 Du hattest eine wilde Nacht in der Disco.", getMainKeys(state));
+});
+
+bot.action('act_finder', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  ctx.answerCbQuery("Finder wird geöffnet...");
+  await sendUpdate(ctx, state, "📱 Finder-Dating App: Suche nach Matches...", getMainKeys(state));
+});
 
 // --- INTERAKTIONS-HANDLER ---
 
 bot.action(/^interact_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
+  
   const npcId = ctx.match[1];
   const npc = state.persons[npcId];
-  if (!npc) return ctx.answerCbQuery("Person nicht gefunden.");
+  const p = state.persons[state.current_id];
   
+  if (!npc) return ctx.answerCbQuery("Person nicht gefunden.");
   await ctx.answerCbQuery();
-  const text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎁 Geschenk', `act_gift_${npcId}`)],
-    [Markup.button.callback('⬅️ Zurück', 'rel')]
-  ]);
-  await sendUpdate(ctx, state, text, keyboard);
+
+  const isParent = (npcId === p.motherId || npcId === p.fatherId);
+
+  let text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
+  
+  const buttons = [
+    [Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎁 Geschenk', `act_gift_${npcId}`)]
+  ];
+
+  // Eltern-Spezifische Option: Nach Geld fragen
+  if (isParent) {
+    buttons.push([Markup.button.callback('💰 Nach Geld fragen', `act_askmoney_${npcId}`)]);
+  }
+
+  buttons.push([Markup.button.callback('⬅️ Zurück', 'rel')]);
+  await sendUpdate(ctx, state, text, Markup.inlineKeyboard(buttons));
 });
 
-// Beispiel Talk-Handler
 bot.action(/^act_talk_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   const npc = state.persons[ctx.match[1]];
   npc.relationship = Math.min(100, (npc.relationship || 0) + 5);
   await ctx.answerCbQuery("Gutes Gespräch!");
   await sendUpdate(ctx, state, `💬 Du hast mit ${npc.name} geredet.`, getMainKeys(state));
+});
+
+bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const npc = state.persons[ctx.match[1]];
+  const p = state.persons[state.current_id];
+
+  const success = Math.random() * 100 < (npc.relationship - 10);
+  
+  if (success) {
+    const amount = Math.floor(Math.random() * 40) + 10;
+    p.money += amount;
+    npc.relationship = Math.max(0, npc.relationship - 2);
+    await ctx.answerCbQuery(`Erfolg! +${amount}€`);
+    await sendUpdate(ctx, state, `💰 ${npc.name} hat dir ${amount}€ gegeben.`, getMainKeys(state));
+  } else {
+    npc.relationship = Math.max(0, npc.relationship - 10);
+    await ctx.answerCbQuery("Abgelehnt!");
+    await sendUpdate(ctx, state, `❌ ${npc.name} wollte dir kein Geld geben.`, getMainKeys(state));
+  }
 });
 
 // --- NAVIGATION HANDLER ---
