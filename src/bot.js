@@ -13,8 +13,13 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const checkGameOver = (state) => state.isGameOver || !state.persons[state.current_id].isAlive;
 
-// SICHERHEITS-CHECK: Verhindert Klicks auf veraltete Nachrichten
+/**
+ * SICHERHEITS-CHECK: Verhindert Klicks auf veraltete Nachrichten
+ * Während des Setups deaktiviert, um den Prozess nicht zu blockieren.
+ */
 async function isMessageValid(ctx, state) {
+  if (!state.setupComplete) return true; // Ausnahme für Charakter-Erstellung
+
   const currentMsgId = ctx.callbackQuery?.message?.message_id;
   if (state.lastMessageId && currentMsgId !== state.lastMessageId) {
     await ctx.answerCbQuery("⚠️ Diese Nachricht ist veraltet. Bitte nutze das aktuelle Menü unten.", { show_alert: true });
@@ -28,7 +33,7 @@ async function clearChat(ctx, state) {
   if (state.lastMessageId) {
     try {
       await ctx.telegram.deleteMessage(ctx.from.id, state.lastMessageId);
-    } catch (err) { /* Ignorieren */ }
+    } catch (err) { /* Ignorieren, falls bereits gelöscht */ }
   }
 }
 
@@ -58,12 +63,14 @@ async function runSetup(ctx, state) {
   }
   const p = state.persons[state.current_id];
   
+  // 1. NAME
   if (!p.name || p.name.trim() === "") {
     state.setupStep = 'name';
     await writeSave(ctx.from.id, state);
     return ctx.reply("Willkommen bei ValueLifeSim! Wie soll dein Charakter heißen?");
   }
   
+  // 2. GESCHLECHT
   if (!p.gender) {
     state.setupStep = 'gender';
     await writeSave(ctx.from.id, state);
@@ -72,6 +79,7 @@ async function runSetup(ctx, state) {
     ]));
   }
   
+  // 3. LAND
   if (!state.country) {
     state.setupStep = 'country';
     await writeSave(ctx.from.id, state);
@@ -83,7 +91,6 @@ async function runSetup(ctx, state) {
   
   state.setupComplete = true;
   state.setupStep = 'done';
-  // Nach dem Setup die erste Nachricht als "lastMessageId" speichern
   await sendUpdate(ctx, state, `Das Abenteuer in ${state.country} beginnt! Viel Glück, ${p.name}.`, getMainKeys(state));
 }
 
@@ -263,7 +270,7 @@ bot.action(/^inherit_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   state.current_id = nextId;
   state.isGameOver = false;
-  state.lastMessageId = null; // Nachrichtenzähler zurücksetzen
+  state.lastMessageId = null; 
   await ctx.answerCbQuery();
   await sendUpdate(ctx, state, `Ein neues Kapitel beginnt!`, getMainKeys(state));
 });
@@ -271,7 +278,24 @@ bot.action(/^inherit_(.*)$/, async (ctx) => {
 bot.action('reset', async (ctx) => {
   await ctx.answerCbQuery("Reset...");
   const state = initGameState(ctx.from.id);
+  // Alte Menü-Nachricht beim Reset löschen
+  try { await ctx.deleteMessage(); } catch(e) {}
   await writeSave(ctx.from.id, state);
+  return runSetup(ctx, state);
+});
+
+// SETUP ACTIONS
+bot.action(/set_gender_(.*)/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  state.persons[state.current_id].gender = ctx.match[1];
+  await ctx.answerCbQuery();
+  return runSetup(ctx, state);
+});
+
+bot.action(/set_country_(.*)/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  state.country = ctx.match[1];
+  await ctx.answerCbQuery();
   return runSetup(ctx, state);
 });
 
