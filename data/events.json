@@ -6,30 +6,8 @@
     "max_age": 6,
     "weight": 10,
     "choices": [
-      { "text": "Teilen", "response": "Du hast einen neuen Freund gefunden!", "effect": { "happiness": 10, "reputation": 5 } },
+      { "text": "Teilen", "response": "Du hast einen neuen Freund gefunden!", "effect": { "happiness": 10, "reputation": 5, "add_friend": true } },
       { "text": "Verteidigen", "response": "Du hast dein Auto behalten, aber weinst jetzt.", "effect": { "happiness": -5, "smarts": 2 } }
-    ]
-  },
-  {
-    "id": "found_money",
-    "text": "Du hast auf der Straße einen 20-Euro-Schein gefunden!",
-    "min_age": 7,
-    "max_age": 99,
-    "weight": 5,
-    "choices": [
-      { "text": "Einstecken", "response": "Dein Geldbeutel freut sich.", "effect": { "money": 20, "happiness": 5, "reputation": -5 } },
-      { "text": "Abgeben", "response": "Ehrlichkeit zahlt sich aus (für dein Karma).", "effect": { "happiness": 10, "smarts": 5, "reputation": 10 } }
-    ]
-  },
-  {
-    "id": "stray_cat",
-    "text": "Eine streunende Katze folgt dir nach Hause. Sie sieht hungrig aus.",
-    "min_age": 5,
-    "max_age": 99,
-    "weight": 2,
-    "choices": [
-      { "text": "Füttern", "response": "Die Katze schnurrt und du fühlst dich gut.", "effect": { "money": -5, "happiness": 15 } },
-      { "text": "Ignorieren", "response": "Du gehst einfach weiter.", "effect": { "happiness": -5 } }
     ]
   },
   {
@@ -44,14 +22,57 @@
     ]
   },
   {
-    "id": "broken_window",
-    "text": "Du hast beim Fußballspielen aus Versehen eine Scheibe eingeworfen!",
-    "min_age": 8,
-    "max_age": 15,
+    "id": "finder_match_event",
+    "text": "Dein Handy vibriert: Du hast ein neues Match auf Finder! Es scheint jemand sehr Interessantes zu sein.",
+    "min_age": 16,
+    "max_age": 50,
+    "weight": 15,
+    "choices": [
+      { "text": "Anschreiben", "response": "Ihr versteht euch prächtig! Ein neues Gesicht in deinen Kontakten.", "effect": { "happiness": 10, "add_friend": true } },
+      { "text": "Ignorieren", "response": "Du hast momentan keine Lust auf Smalltalk.", "effect": { "happiness": -2 } }
+    ]
+  },
+  {
+    "id": "disco_invitation",
+    "text": "Ein paar Freunde fragen, ob du heute Abend mit in die Disco kommst. Es wird teuer, aber legendär!",
+    "min_age": 16,
+    "max_age": 35,
+    "weight": 10,
+    "choices": [
+      { "text": "Mitgehen (-100)", "response": "Was für eine Nacht! Du hast viel getanzt und neue Leute getroffen.", "effect": { "money": -100, "happiness": 20, "reputation": 5, "add_friend": true } },
+      { "text": "Zu Hause bleiben", "response": "Du sparst Geld, verpasst aber die Party des Jahres.", "effect": { "money": 0, "happiness": -5 } }
+    ]
+  },
+  {
+    "id": "pregnancy_test_positive",
+    "text": "Du (oder deine Partnerin) fühlst dich seit Tagen seltsam. Ein Test bringt Klarheit: Ein Baby ist unterwegs!",
+    "min_age": 18,
+    "max_age": 45,
+    "weight": 5,
+    "choices": [
+      { "text": "Freuen", "response": "Du bereitest dich innerlich auf die Geburt im nächsten Jahr vor.", "effect": { "happiness": 25, "reputation": 10 } }
+    ]
+  },
+  {
+    "id": "proposal_pressure",
+    "text": "Deine Eltern fragen beim Abendessen ständig, wann du endlich heiratest. Das nervt!",
+    "min_age": 22,
+    "max_age": 40,
     "weight": 8,
     "choices": [
-      { "text": "Wegrennen", "response": "Niemand hat dich gesehen, aber du hast ein schlechtes Gewissen.", "effect": { "happiness": -10, "reputation": -15 } },
-      { "text": "Beichten", "response": "Deine Eltern müssen zahlen, sind aber stolz auf deine Ehrlichkeit.", "effect": { "money": -50, "reputation": 20, "happiness": -5 } }
+      { "text": "Thema wechseln", "response": "Du lenkst geschickt ab, aber die Stimmung ist gedrückt.", "effect": { "happiness": -5 } },
+      { "text": "Zustimmen", "response": "Du versprichst, darüber nachzudenken (auch wenn es gelogen ist).", "effect": { "happiness": 5, "reputation": 5 } }
+    ]
+  },
+  {
+    "id": "found_money",
+    "text": "Du hast auf der Straße einen 20-Euro-Schein gefunden!",
+    "min_age": 7,
+    "max_age": 99,
+    "weight": 5,
+    "choices": [
+      { "text": "Einstecken", "response": "Dein Geldbeutel freut sich.", "effect": { "money": 20, "happiness": 5, "reputation": -5 } },
+      { "text": "Abgeben", "response": "Ehrlichkeit zahlt sich aus.", "effect": { "happiness": 10, "smarts": 5, "reputation": 10 } }
     ]
   },
   {
@@ -66,36 +87,14 @@
     ]
   },
   {
-    "id": "library_book",
-    "text": "In der Bibliothek findest du ein Buch über Quantenphysik. Liest du es?",
-    "min_age": 12,
-    "max_age": 99,
-    "weight": 6,
+    "id": "midlife_crisis",
+    "text": "Mitten im Berufsleben fragst du dich plötzlich: War das schon alles?",
+    "min_age": 40,
+    "max_age": 55,
+    "weight": 7,
     "choices": [
-      { "text": "Lesen", "response": "Dein Kopf raucht, aber du hast viel gelernt.", "effect": { "smarts": 15, "happiness": -5 } },
-      { "text": "Weglegen", "response": "Zu kompliziert. Du spielst lieber am Handy.", "effect": { "smarts": -2, "happiness": 10 } }
-    ]
-  },
-  {
-    "id": "lottery_ticket",
-    "text": "Du findest ein altes Rubbellos auf dem Boden. Es wurde noch nicht freigerubbelt!",
-    "min_age": 18,
-    "max_age": 99,
-    "weight": 3,
-    "choices": [
-      { "text": "Rubbeln", "response": "Wahnsinn! Ein kleiner Gewinn!", "effect": { "money": 100, "happiness": 20 } },
-      { "text": "Wegwerfen", "response": "Ist eh meistens eine Niete.", "effect": { "happiness": 0 } }
-    ]
-  },
-  {
-    "id": "neighbor_help",
-    "text": "Deine Nachbarin fragt, ob du ihr beim Tragen der Einkäufe helfen kannst.",
-    "min_age": 10,
-    "max_age": 70,
-    "weight": 10,
-    "choices": [
-      { "text": "Helfen", "response": "Sie gibt dir ein paar Euro als Dankeschön.", "effect": { "money": 10, "reputation": 10, "happiness": 5 } },
-      { "text": "Ablehnen", "response": "Du hattest keine Lust. Dein Ruf leidet etwas.", "effect": { "reputation": -5 } }
+      { "text": "Sportwagen kaufen (-5000)", "response": "Du fühlst dich wieder jung, aber dein Konto blutet.", "effect": { "money": -5000, "happiness": 30, "looks": 10 } },
+      { "text": "Neues Hobby suchen", "response": "Du fängst an zu gärtnern. Es beruhigt dich.", "effect": { "happiness": 10, "health": 5 } }
     ]
   }
 ]

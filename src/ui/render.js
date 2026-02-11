@@ -22,12 +22,11 @@ class Render {
   }
 
   /**
-   * Zeigt den detaillierten Status inkl. Beziehungsstatus und DisplayName
+   * Zeigt den detaillierten Status inkl. Schwangerschaft und Partner
    */
   static status(p, state) {
     if (!p) return "Fehler: Charakterdaten konnten nicht geladen werden.";
     
-    // Länderdaten laden, um display_name zu finden
     let countryDisplayName = state.country || 'Keines';
     let flag = "📍";
     
@@ -39,22 +38,21 @@ class Render {
         countryDisplayName = countryObj.display_name;
         flag = countryObj.flag;
       }
-    } catch (err) {
-      console.error("Fehler beim Laden der Länder für Render:", err);
-    }
+    } catch (err) {}
 
     const lifeStatus = p.isAlive ? "" : "💀 *VERSTORBEN*\n";
     const moneyText = this.formatMoney(p.money, state.country);
 
-    // NEU: Beziehungsstatus (Heirat)
+    // NEU: Status-Icons (Heirat & Schwangerschaft)
     const maritalText = p.maritalStatus ? `💍 *Status:* ${p.maritalStatus}\n` : "";
+    const pregnancyText = p.isPregnant ? `🤰 *Status:* Schwanger (Geburt im nächsten Jahr)\n` : "";
 
     return `✨ *ValueLifeSim v${config.version}*\n` +
            `${lifeStatus}` + 
-           `👤 *Name:* ${p.name || 'Unbekannt'}\n` +
+           `👤 *Name:* ${p.name}\n` +
            `🎂 *Alter:* ${p.age}\n` +
            `${flag} *Land:* ${countryDisplayName}\n` +
-           `${maritalText}` +
+           `${maritalText}${pregnancyText}` +
            `💰 *Bank:* ${moneyText}\n\n` +
            `🏥 *Gesundheit:* ${p.health}%\n` +
            `😊 *Glück:* ${p.happiness}%\n` +
@@ -63,45 +61,45 @@ class Render {
   }
 
   /**
-   * Tagebuch Anzeige
+   * NEU: Design für die Dating-App "Finder"
    */
-  static diary(state) {
-    if (!state.diary || state.diary.length === 0) {
-      return "📖 *Dein Tagebuch*\n\n_Noch keine Einträge vorhanden._";
-    }
-    let text = "📖 *Deine Lebenschronik*\n________________________________\n\n";
-    const entries = [...state.diary].reverse().slice(0, 15);
-    entries.forEach(entry => { text += `• ${entry}\n`; });
-    return text;
+  static finderProfile(npc) {
+    const genderIcon = npc.gender === 'W' ? '👩' : '👨';
+    return `📱 *Finder - Neues Profil*\n\n` +
+           `${genderIcon} *Name:* ${npc.name}\n` +
+           `🎂 *Alter:* ${npc.age}\n` +
+           `✨ *Looks:* ${npc.looks}%\n\n` +
+           `_„Interessiert an einem Treffen?“_`;
   }
 
   /**
-   * Beziehungsliste inkl. Freunde und Familienstand
+   * Beziehungsliste mit Romantik-Anzeige
    */
   static relationships(state) {
-    if (!state || !state.persons) return { text: "Keine Beziehungen gefunden.", keyboard: null };
+    if (!state || !state.persons) return { text: "Keine Beziehungen.", keyboard: null };
     
     const player = state.persons[state.current_id];
-    let text = `👥 *Beziehungen & Freunde (v${config.version})*\n\n`;
+    let text = `👥 *Beziehungen & Familie (v${config.version})*\n\n`;
     const buttons = [];
 
-    // Personen filtern (alle außer der Spieler selbst)
     const personIds = Object.keys(state.persons).filter(id => id !== state.current_id);
 
     personIds.forEach(id => {
       const p = state.persons[id];
       const relation = this.getRelationLabel(p, state);
-      const statusIcon = p.isAlive ? "❤️" : "💀";
+      
+      // Icons basierend auf Beziehungstyp
+      let statusIcon = p.isAlive ? "❤️" : "💀";
+      if (p.id === player.partnerId) statusIcon = p.maritalStatus ? "💍" : "💘";
       
       const barLength = 5;
       const filled = Math.round((p.relationship / 100) * barLength);
       const bar = "🟢".repeat(filled) + "⚪".repeat(barLength - filled);
 
-      // Spezielle Anzeige für Partner
-      const partnerNote = p.id === player.partnerId ? "💍 " : "";
+      const romanceBar = p.romance > 0 ? `\n└ 🔥 Liebe: ${"❤️".repeat(Math.round(p.romance/20))}` : "";
 
-      text += `${statusIcon} ${partnerNote}*${p.name}*\n`;
-      text += `└ ${relation} | ${bar} ${p.relationship}%\n\n`;
+      text += `${statusIcon} *${p.name}*\n`;
+      text += `└ ${relation} | ${bar} ${p.relationship}%${romanceBar}\n\n`;
 
       if (p.isAlive) {
         buttons.push([Markup.button.callback(`👉 Mit ${p.name} interagieren`, `interact_${id}`)]);
@@ -110,14 +108,11 @@ class Render {
 
     buttons.push([Markup.button.callback('⬅️ Zurück zum Hauptmenü', 'main_menu')]);
 
-    return {
-      text: text,
-      keyboard: Markup.inlineKeyboard(buttons)
-    };
+    return { text: text, keyboard: Markup.inlineKeyboard(buttons) };
   }
 
   /**
-   * Stammbaum mit Heirats-Logik
+   * Stammbaum
    */
   static tree(state) {
     if (!state || !state.persons) return "Kein Stammbaum verfügbar.";
@@ -128,10 +123,9 @@ class Render {
       const statusIcon = p.isAlive ? '🟢' : '⚫️';
       const isCurrent = p.id === state.current_id ? " ⭐" : "";
       const relation = this.getRelationLabel(p, state);
-      const marriedInfo = p.maritalStatus ? ` (${p.maritalStatus})` : "";
-
+      
       text += `${statusIcon} *${p.name}* (${p.age} J.)${isCurrent}\n`;
-      text += `└─ ${relation}${marriedInfo}\n\n`;
+      text += `└─ ${relation}\n\n`;
     });
     return text;
   }
@@ -140,12 +134,23 @@ class Render {
     const player = state.persons[state.current_id];
     if (!player) return "Bekannte(r)";
     if (p.id === state.current_id) return "Selbst";
-    if (p.id === player.partnerId) return player.gender === 'W' ? "Ehemann" : "Ehefrau";
+    if (p.id === player.partnerId) {
+       const isMarried = p.maritalStatus !== null;
+       if (player.gender === 'W') return isMarried ? "Ehemann" : "Partner";
+       return isMarried ? "Ehefrau" : "Partnerin";
+    }
     if (p.id === player.motherId) return "Mutter";
     if (p.id === player.fatherId) return "Vater";
     if (player.childrenIds && player.childrenIds.includes(p.id)) return "Kind";
     if (player.friendsIds && player.friendsIds.includes(p.id)) return "Freund(in)";
     return "Bekannte(r)";
+  }
+
+  static diary(state) {
+    if (!state.diary || state.diary.length === 0) return "📖 *Tagebuch leer.*";
+    let text = "📖 *Lebenschronik*\n________________________________\n\n";
+    [...state.diary].reverse().slice(0, 15).forEach(e => { text += `• ${e}\n`; });
+    return text;
   }
 }
 

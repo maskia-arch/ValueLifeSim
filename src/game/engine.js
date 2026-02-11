@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { getRandomName, createPerson } = require('./state'); // Wichtig für NPC-Generierung
+const { getRandomName, createPerson } = require('./state');
 
 class Engine {
   static nextYear(state) {
@@ -14,10 +14,38 @@ class Engine {
 
     const npcDeaths = [];
     const countries = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/countries.json'), 'utf8'));
-    // Nutzt das Land des Spielers für wirtschaftliche Faktoren
     const countryData = countries.find(c => c.name === state.country) || countries[0];
 
-    // 1. Simulation aller Personen
+    // --- 1. GEBURTS-LOGIK (Vor der allgemeinen Simulation) ---
+    // Sicherheitsprüfung: Geburt und Schwangerschafts-Checks erst ab 16 Jahren möglich
+    let birthEvent = null;
+    if (player.age >= 16) {
+      for (let id in state.persons) {
+        const person = state.persons[id];
+        if (person.isAlive && person.isPregnant) {
+          person.isPregnant = false; 
+          
+          const gender = Math.random() > 0.5 ? 'M' : 'W';
+          const baby = createPerson("Baby", gender, state.country, { 
+            m: person.gender === 'W' ? person.id : person.partnerId, 
+            f: person.gender === 'M' ? person.id : person.partnerId 
+          });
+
+          state.persons[baby.id] = baby;
+          
+          if (person.id === state.current_id || person.id === player.partnerId) {
+            player.childrenIds.push(baby.id);
+            const partner = state.persons[player.partnerId];
+            if (partner) partner.childrenIds.push(baby.id);
+            
+            birthEvent = { type: 'birth', babyId: baby.id, gender: gender };
+            state.diary.push(`👶 Alter ${player.age}: Nachwuchs! Ein ${gender === 'W' ? 'Mädchen' : 'Junge'} wurde geboren.`);
+          }
+        }
+      }
+    }
+
+    // 2. Simulation aller Personen
     for (let id in state.persons) {
       const person = state.persons[id];
       if (person.isAlive) {
@@ -26,12 +54,13 @@ class Engine {
         if (id !== state.current_id) {
           person.health = Math.min(100, Math.max(0, person.health + (Math.random() * 4 - 2.5)));
           
-          // Beziehungsverfall (etwas milder bei Freunden/Partnern)
+          // Beziehungsverfall
           const isFriend = (player.friendsIds || []).includes(id);
-          const decay = isFriend ? Math.floor(Math.random() * 2) : Math.floor(Math.random() * 3) + 1;
+          const isPartner = player.partnerId === id;
+          const decay = (isFriend || isPartner) ? Math.floor(Math.random() * 2) : Math.floor(Math.random() * 3) + 1;
           person.relationship = Math.max(0, (person.relationship || 50) - decay);
 
-          // NPC-Finanzen
+          // Finanzen
           if (person.age >= 20 && person.age <= 65) {
             person.money += Math.floor((Math.random() * 500 + 100) * countryData.salary_multiplier);
           }
@@ -56,7 +85,6 @@ class Engine {
             if (id === player.fatherId) relation = "Vater";
             if (id === player.partnerId) relation = "Ehepartner";
             if (player.childrenIds.includes(id)) relation = "Kind";
-            if ((player.friendsIds || []).includes(id)) relation = "Freund(in)";
             
             npcDeaths.push({ name: person.name, relation: relation });
             state.diary.push(`🕯️ Alter ${player.age}: Deine ${relation} ${person.name} ist verstorben.`);
@@ -65,12 +93,16 @@ class Engine {
       }
     }
 
-    // 2. Event Check
+    // Wenn ein Baby geboren wurde, geben wir das als Priorität zurück
+    if (birthEvent) return { ...birthEvent, npcDeaths };
+
+    // 3. Event Check (Romantische/Dating-Events durch Filter in events.json steuern)
     if (Math.random() < 0.25) {
       try {
         const eventsPath = path.join(process.cwd(), 'data/events.json');
         const allEvents = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
         
+        // Filtert Events nach Alter (Dating-Events sollten in der JSON min_age: 16 haben)
         let possibleEvents = allEvents.filter(e => player.age >= e.min_age && player.age <= e.max_age);
         
         if (possibleEvents.length > 0) {
@@ -82,39 +114,6 @@ class Engine {
     }
 
     return { type: 'none', npcDeaths: npcDeaths };
-  }
-
-  static processChoice(state, choice) {
-    const p = state.persons[state.current_id];
-    const effects = choice.effect || {};
-
-    // Standard-Effekte
-    if (effects.money) p.money += effects.money;
-    ['happiness', 'smarts', 'health', 'looks', 'reputation'].forEach(stat => {
-      if (effects[stat] !== undefined) {
-        p[stat] = Math.min(100, Math.max(0, (p[stat] || 0) + effects[stat]));
-      }
-    });
-    
-    // --- NEU: NPC GENERIERUNG (Freunde) ---
-    if (effects.add_friend) {
-      const gender = Math.random() > 0.5 ? 'M' : 'W';
-      // Erstellt NPC passend zum aktuellen Land des Spielers
-      const npcData = getRandomName(gender, state.country || 'germany');
-      const friend = createPerson(npcData.full, gender, state.country);
-      
-      // Alter des Freundes an Spieler anpassen (+/- 2 Jahre)
-      friend.age = Math.max(0, p.age + (Math.floor(Math.random() * 5) - 2));
-      friend.relationship = 70; // Startwert für neue Freunde
-      
-      state.persons[friend.id] = friend;
-      if (!p.friendsIds) p.friendsIds = [];
-      p.friendsIds.push(friend.id);
-    }
-
-    if (!state.diary) state.diary = [];
-    state.diary.push(`📝 Alter ${p.age}: ${choice.response}`);
-    state.activeEventId = null;
   }
 
   static checkHeritage(state) {
@@ -130,6 +129,21 @@ class Engine {
     
     state.isGameOver = true;
     return { possible: false, child: null };
+  }
+
+  static processChoice(state, choice) {
+    const p = state.persons[state.current_id];
+    const effects = choice.effect || {};
+
+    if (effects.money) p.money += effects.money;
+    ['happiness', 'smarts', 'health', 'looks', 'reputation'].forEach(stat => {
+      if (effects[stat] !== undefined) {
+        p[stat] = Math.min(100, Math.max(0, (p[stat] || 0) + effects[stat]));
+      }
+    });
+
+    state.diary.push(`📝 Alter ${p.age}: ${choice.response}`);
+    state.activeEventId = null;
   }
 }
 

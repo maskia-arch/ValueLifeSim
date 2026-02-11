@@ -10,7 +10,6 @@ function getRandomName(gender, country = 'germany', forcedLastName = null) {
     const namesPath = path.join(process.cwd(), 'data/npc_names.json');
     const allData = JSON.parse(fs.readFileSync(namesPath, 'utf8'));
     
-    // Fallback auf den technischen Namen (Mapping für npc_names keys)
     const key = country.toLowerCase();
     const data = allData[key] || allData['germany'];
     
@@ -27,7 +26,7 @@ function getRandomName(gender, country = 'germany', forcedLastName = null) {
 }
 
 /**
- * NEU: Passt die Eltern kulturell an das gewählte Land an.
+ * Passt die Eltern kulturell an das gewählte Land an.
  */
 function finalizeParentsCulture(state, country) {
   const p = state.persons[state.current_id];
@@ -35,20 +34,21 @@ function finalizeParentsCulture(state, country) {
   const father = state.persons[p.fatherId];
   const lastName = state.familyLastName;
 
-  // Generiere neue Vornamen passend zur Nationalität
   const mData = getRandomName("W", country, lastName);
   const fData = getRandomName("M", country, lastName);
 
   mother.name = mData.full;
   father.name = fData.full;
 
-  // Falls verheiratet, Marital Status Texte aktualisieren
   if (mother.partnerId === father.id) {
     mother.maritalStatus = `Verheiratet mit ${father.name}`;
     father.maritalStatus = `Verheiratet mit ${mother.name}`;
   }
 }
 
+/**
+ * Erstellt eine Person mit erweiterten v0.0.2 Attributen.
+ */
 function createPerson(name, gender = null, country = 'germany', parents = { m: null, f: null }, inherited = 0) {
   return {
     id: uuidv4(),
@@ -61,19 +61,22 @@ function createPerson(name, gender = null, country = 'germany', parents = { m: n
     smarts: Math.floor(Math.random() * 101),
     looks: Math.floor(Math.random() * 101),
     reputation: 50,
-    relationship: 80,
+    relationship: 80, 
+    romance: 0,       
     isAlive: true,
     motherId: parents.m,
     fatherId: parents.f,
     partnerId: null,      
     maritalStatus: null,  
+    sexuality: 'hetero', 
+    hasSetSexuality: false, // NEU: Verhindert Dating-Events und zeigt Setup-Abfrage ab Alter 16
+    isPregnant: false,   
     childrenIds: [],
     friendsIds: []        
   };
 }
 
 function initGameState(userId) {
-  // Wir erstellen die Personen zuerst als Platzhalter
   const mother = createPerson(null, "W");
   mother.age = Math.floor(Math.random() * 15) + 20;
   
@@ -85,7 +88,7 @@ function initGameState(userId) {
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.176",
+    schema_version: "0.0.2", 
     setupComplete: false,
     setupStep: 'name',
     country: null, 
