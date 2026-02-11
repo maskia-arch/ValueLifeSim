@@ -148,20 +148,86 @@ bot.action('age_up', async (ctx) => {
   await sendUpdate(ctx, state, msgText, keys);
 });
 
-// --- ROMANTIK & SOCIAL HANDLER (v0.0.2g) ---
+bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
+  const [_, eventId, choiceIdx] = ctx.match;
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+
+  const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
+  const event = events.find(e => e.id === eventId);
+  if (!event) return ctx.answerCbQuery("Ereignis nicht gefunden.");
+
+  const choice = event.choices[parseInt(choiceIdx)];
+  Engine.processChoice(state, choice);
+  
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, `✅ ${choice.response}`, getMainKeys(state));
+});
+
+bot.action(/^set_sex_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!state) return;
+  const p = state.persons[state.current_id];
+  p.sexuality = ctx.match[1];
+  p.hasSetSexuality = true;
+  await ctx.answerCbQuery("Präferenz gespeichert!");
+  await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
+});
+
+// --- INTERAKTIONS-HANDLER (FIXED) ---
+
+bot.action(/^act_talk_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const npcId = ctx.match[1];
+  const npc = state.persons[npcId];
+  npc.relationship = Math.min(100, (npc.relationship || 0) + 5);
+  await ctx.answerCbQuery("💬 Ein nettes Gespräch!");
+  await sendUpdate(ctx, state, `Du hast dich gut mit ${npc.name} unterhalten.`, getMainKeys(state));
+});
+
+bot.action(/^act_gift_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const p = state.persons[state.current_id];
+  const npcId = ctx.match[1];
+  const npc = state.persons[npcId];
+  if (p.money < 20) return ctx.answerCbQuery("⚠️ Zu wenig Geld (20€ benötigt).", { show_alert: true });
+  p.money -= 20;
+  npc.relationship = Math.min(100, (npc.relationship || 0) + 15);
+  await ctx.answerCbQuery("🎁 Geschenk übergeben!");
+  await sendUpdate(ctx, state, `Du hast ${npc.name} ein Geschenk gekauft (+15% Beziehung).`, getMainKeys(state));
+});
+
+bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const npcId = ctx.match[1];
+  const npc = state.persons[npcId];
+  const p = state.persons[state.current_id];
+  const success = Math.random() < (npc.relationship / 100);
+  if (success) {
+    const amount = Math.floor(Math.random() * 30) + 10;
+    p.money += amount;
+    npc.relationship = Math.max(0, npc.relationship - 5);
+    await ctx.answerCbQuery(`✅ Erfolg! +${amount}€`);
+    await sendUpdate(ctx, state, `${npc.name} hat dir ${amount}€ gegeben.`, getMainKeys(state));
+  } else {
+    npc.relationship = Math.max(0, npc.relationship - 10);
+    await ctx.answerCbQuery("❌ Abgelehnt.", { show_alert: true });
+    await sendUpdate(ctx, state, `${npc.name} wollte dir kein Geld geben.`, getMainKeys(state));
+  }
+});
+
+// --- ROMANTIK & SOCIAL HANDLER ---
 
 bot.action(/^act_ask_rel_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   const npcId = ctx.match[1];
   const npc = state.persons[npcId];
-  
   const result = Engine.attemptRelationship(state, npcId);
   await ctx.answerCbQuery();
-  
   if (result.success) {
     await sendUpdate(ctx, state, `❤️ *Erfolg!* Du und ${npc.name} seid jetzt ein Paar.`, getMainKeys(state));
   } else {
-    await sendUpdate(ctx, state, `💔 *Ablehnung.* ${npc.name} möchte momentan keine Beziehung mit dir. (Beziehung gesunken)`, getMainKeys(state));
+    await sendUpdate(ctx, state, `💔 *Ablehnung.* ${npc.name} möchte momentan keine Beziehung.`, getMainKeys(state));
   }
 });
 
@@ -169,62 +235,45 @@ bot.action(/^act_ons_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   const npcId = ctx.match[1];
   const npc = state.persons[npcId];
-  
   const result = Engine.attemptOneNightStand(state, npcId);
   await ctx.answerCbQuery();
-  
   if (result.success) {
-    await sendUpdate(ctx, state, `🔥 *Heiß!* Du hattest ein aufregendes Abenteuer mit ${npc.name}. Dein Glück ist gestiegen!`, getMainKeys(state));
+    await sendUpdate(ctx, state, `🔥 *Heiß!* Du hattest ein Abenteuer mit ${npc.name}.`, getMainKeys(state));
   } else {
-    await sendUpdate(ctx, state, `❌ *Korb.* ${npc.name} hatte kein Interesse an einer schnellen Nummer.`, getMainKeys(state));
+    await sendUpdate(ctx, state, `❌ *Korb.* ${npc.name} hatte kein Interesse.`, getMainKeys(state));
   }
 });
-
-// --- INTERAKTIONS-HANDLER ---
 
 bot.action(/^interact_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
-  
   const npcId = ctx.match[1];
   const npc = state.persons[npcId];
   const p = state.persons[state.current_id];
   if (!npc) return ctx.answerCbQuery("Person nicht gefunden.");
-  
   await ctx.answerCbQuery();
   const isParent = (npcId === p.motherId || npcId === p.fatherId);
   const isPartner = (npcId === p.partnerId);
-  const isFriend = (p.friendsIds || []).includes(npcId);
-  
   let text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
   if (isPartner) text += `\nStatus: ❤️ Partner(in)`;
-  
-  const buttons = [
-    [Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎁 Geschenk', `act_gift_${npcId}`)]
-  ];
-
-  // Spezial-Aktionen
+  const buttons = [[Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎁 Geschenk', `act_gift_${npcId}`)]];
   if (isParent) {
     buttons.push([Markup.button.callback('💰 Nach Geld fragen', `act_askmoney_${npcId}`)]);
   } else if (p.age >= 16) {
-    // Romantische Optionen
     if (isPartner) {
       buttons.push([Markup.button.callback('💋 Küssen', `act_kiss_${npcId}`), Markup.button.callback('🔞 Sex haben', `act_sex_${npcId}`)]);
     } else if (npc.relationship >= 80) {
       buttons.push([Markup.button.callback('❤️ Nach Beziehung fragen', `act_ask_rel_${npcId}`)]);
     }
-    
-    // One Night Stand (Nur bei Nicht-Verwandten/Nicht-Partnern möglich)
     if (!isPartner && !isParent) {
-       buttons.push([Markup.button.callback('🔥 One Night Stand vorschlagen', `act_ons_${npcId}`)]);
+       buttons.push([Markup.button.callback('🔥 One Night Stand', `act_ons_${npcId}`)]);
     }
   }
-
   buttons.push([Markup.button.callback('⬅️ Zurück', 'rel')]);
   await sendUpdate(ctx, state, text, Markup.inlineKeyboard(buttons));
 });
 
-// --- STANDARD HANDLER ---
+// --- NAVIGATION & ACTIVITIES ---
 
 bot.action('status', async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -268,12 +317,53 @@ bot.action('act_finder', async (ctx) => {
   ]));
 });
 
+// --- RESET & SETUP ---
+
 bot.action('reset', async (ctx) => {
-  const state = initGameState(ctx.from.id);
-  await writeSave(ctx.from.id, state);
+  const userId = ctx.from.id;
+  const state = await readSave(userId);
+  if (state && state.lastMessageId) {
+    for (let i = 0; i < 30; i++) {
+      try { await ctx.telegram.deleteMessage(userId, state.lastMessageId - i); } catch (err) {}
+    }
+  }
+  const newState = initGameState(userId);
+  await writeSave(userId, newState);
+  await ctx.answerCbQuery("Reset wird durchgeführt...");
+  return runSetup(ctx, newState);
+});
+
+bot.action(/set_country_(.*)/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  state.country = ctx.match[1];
+  finalizeParentsCulture(state, state.country);
+  await ctx.answerCbQuery();
   return runSetup(ctx, state);
+});
+
+bot.action(/set_gender_(.*)/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  state.persons[state.current_id].gender = ctx.match[1].includes('M') ? 'M' : 'W';
+  await ctx.answerCbQuery();
+  return runSetup(ctx, state);
+});
+
+bot.action('main_menu', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
+});
+
+bot.action('tree', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  await sendUpdate(ctx, state, Render.tree(state), getMainKeys(state));
+});
+
+bot.action('diary', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  await sendUpdate(ctx, state, Render.diary(state), getMainKeys(state));
 });
 
 bot.on('callback_query', async (ctx) => { await ctx.answerCbQuery(); });
 
+bot.launch();
 module.exports = bot;
