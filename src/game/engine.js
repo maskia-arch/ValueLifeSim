@@ -14,7 +14,7 @@ class Engine {
     if (!player.friendsIds) player.friendsIds = [];
     if (!player.childrenIds) player.childrenIds = [];
     
-    // Zähler sicherstellen
+    // Sicherstellung des Zählers für Bad Luck Protection
     if (state.yearsSinceLastEvent === undefined) state.yearsSinceLastEvent = 0;
 
     const npcDeaths = [];
@@ -58,6 +58,7 @@ class Engine {
       if (person.isAlive) {
         person.age += 1;
         
+        // Stats-Validierung
         person.heat = person.heat || 0;
         person.money = person.money || 0;
         person.happiness = person.happiness || 100;
@@ -67,6 +68,7 @@ class Engine {
         person.looks = person.looks || 50;
 
         if (id !== state.current_id) {
+          // NPC Gesundheit & Beziehungsschwund
           person.health = Math.min(100, Math.max(0, person.health + (Math.random() * 4 - 2.5)));
           
           const isFriend = (player.friendsIds || []).includes(id);
@@ -77,12 +79,14 @@ class Engine {
           const decay = (isFriend || isPartner) ? Math.floor(Math.random() * 2 * decayFactor) : Math.floor(Math.random() * 3) + 1;
           person.relationship = Math.max(0, (person.relationship || 50) - decay);
 
+          // Einkommen / Ausgaben NPCs
           if (person.age >= 20 && person.age <= 65) {
             person.money += Math.floor((Math.random() * 500 + 100) * countryData.salary_multiplier);
           }
           person.money = Math.max(0, person.money - (50 * countryData.cost_of_living));
         }
 
+        // Todes-Logik
         let deathChance = 0;
         if (person.age > 70) deathChance += (person.age - 70) * 0.05;
         if (person.health < 20) deathChance += 0.15;
@@ -110,9 +114,9 @@ class Engine {
 
     if (birthEvent) return { ...birthEvent, npcDeaths };
 
-    // --- 3. FIX: ÜBERARBEITETER EVENT CHECK ---
-    const baseChance = 0.35; // Erhöht auf 35%
-    const forceEventThreshold = 3; // Nach 3 Jahren Ruhe kommt garantiert ein Event
+    // --- 3. EVENT CHECK MIT BAD LUCK PROTECTION ---
+    const baseChance = 0.35; 
+    const forceEventThreshold = 3; // Garantiertes Event alle 3-4 Jahre
     
     const shouldTrigger = (Math.random() < baseChance) || (state.yearsSinceLastEvent >= forceEventThreshold);
 
@@ -120,9 +124,9 @@ class Engine {
       try {
         const eventsPath = path.join(process.cwd(), 'data/events.json');
         const allEvents = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
-        
         const hasPartner = player.partnerId !== null;
 
+        // Filtern nach Alter und Partnerschafts-Status
         let possibleEvents = allEvents.filter(e => {
           const ageMatch = player.age >= e.min_age && player.age <= e.max_age;
           const partnerMatch = e.requires_partner ? hasPartner : true;
@@ -132,13 +136,15 @@ class Engine {
         if (possibleEvents.length > 0) {
           const event = possibleEvents[Math.floor(Math.random() * possibleEvents.length)];
           state.activeEventId = event.id;
-          state.yearsSinceLastEvent = 0; // Zähler bei Erfolg zurücksetzen
+          state.yearsSinceLastEvent = 0; // Reset
           return { type: 'event', data: event, npcDeaths: npcDeaths };
         }
-      } catch (err) { console.error("Event-System Fehler:", err); }
+      } catch (err) { 
+        console.error("Event-System Fehler:", err); 
+      }
     }
 
-    // Wenn kein Event getriggert wurde, Zähler erhöhen
+    // Kein Event getriggert? Zähler erhöhen
     state.yearsSinceLastEvent++; 
     return { type: 'none', npcDeaths: npcDeaths };
   }
@@ -204,7 +210,6 @@ class Engine {
     }
 
     const success = Math.random() < 0.98;
-
     if (success) {
       return { success: true };
     } else {
@@ -254,6 +259,7 @@ class Engine {
     if (!p.friendsIds) p.friendsIds = [];
     const effects = choice.effect || {};
 
+    // Standard-Stats Effekte
     if (effects.money) p.money += effects.money;
     ['happiness', 'smarts', 'health', 'looks', 'reputation', 'heat'].forEach(stat => {
       if (effects[stat] !== undefined) {
@@ -261,11 +267,13 @@ class Engine {
       }
     });
 
+    // Partner-Spezifischer Effekt
     if (effects.relationship_partner && p.partnerId) {
         const partner = state.persons[p.partnerId];
         partner.relationship = Math.min(100, Math.max(0, (partner.relationship || 0) + effects.relationship_partner));
     }
 
+    // Freundschafts-Events
     if (effects.add_friend) {
       const friend = this.generateEncounter(state);
       friend.relationship = 85; 

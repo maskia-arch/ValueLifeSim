@@ -163,18 +163,50 @@ bot.action('age_up', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
   await ctx.answerCbQuery();
+  
   const result = Engine.nextYear(state);
   const p = state.persons[state.current_id];
+
+  // 1. Check auf Geburt
   if (result.type === 'birth') {
     state.setupStep = 'naming_baby';
     state.pendingBabyId = result.babyId;
     await writeSave(ctx.from.id, state);
     return ctx.reply(`👶 Ein ${result.gender === 'W' ? 'Mädchen' : 'Junge'} wurde geboren! Name?`);
   }
+
+  // 2. Check auf Orientierung (16 Jahre)
   if (p.age === 16 && !p.hasSetSexuality) {
     return sendUpdate(ctx, state, "✨ Wähle deine Orientierung:", Markup.inlineKeyboard([[Markup.button.callback('👫 Hetero', 'set_sex_hetero')],[Markup.button.callback('👬 Homo', 'set_sex_homo')],[Markup.button.callback('🌍 Bi', 'set_sex_bi')]]));
   }
+
+  // 3. FIX: Check auf Random Event
+  if (result.type === 'event') {
+    const event = result.data;
+    const eventKeys = Markup.inlineKeyboard(event.choices.map((choice, index) => [
+      Markup.button.callback(choice.text, `choice_${event.id}_${index}`)
+    ]));
+    return sendUpdate(ctx, state, `⚡️ *Ereignis!*\n\n${event.text}`, eventKeys);
+  }
+
+  // Standard-Update, wenn kein Event/Geburt stattfindet
   await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
+});
+
+bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
+  const [_, eventId, choiceIndex] = ctx.match;
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+
+  const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
+  const event = events.find(e => e.id === eventId);
+  const choice = event.choices[choiceIndex];
+
+  Engine.processChoice(state, choice);
+  await ctx.answerCbQuery();
+  
+  // Nach der Entscheidung zurück zum Status
+  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
 });
 
 // --- SOCIAL & INTERACTION ---
