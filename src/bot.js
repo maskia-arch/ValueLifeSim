@@ -2,7 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
 const { readSave, writeSave } = require('./storage/save');
-const { initGameState } = require('./game/state');
+const { initGameState, getRandomName } = require('./game/state');
 const Engine = require('./game/engine');
 const Render = require('./ui/render');
 const config = require('./config');
@@ -60,12 +60,14 @@ async function runSetup(ctx, state) {
   }
   const p = state.persons[state.current_id];
   
+  // 1. NAME (Freie Wahl für den Spieler)
   if (!p.name || p.name.trim() === "") {
     state.setupStep = 'name';
     await writeSave(ctx.from.id, state);
-    return ctx.reply(`Willkommen! Dein Familienname ist *${state.familyLastName}*.\n\nWie lautet dein vollständiger Name (Vor- und Nachname)?`);
+    return ctx.reply("Willkommen bei ValueLifeSim! Wie soll dein Charakter heißen? (Vor- und Nachname frei wählbar)");
   }
   
+  // 2. GESCHLECHT
   if (!p.gender) {
     state.setupStep = 'gender';
     await writeSave(ctx.from.id, state);
@@ -74,6 +76,7 @@ async function runSetup(ctx, state) {
     ]));
   }
   
+  // 3. LAND
   if (!state.country) {
     state.setupStep = 'country';
     await writeSave(ctx.from.id, state);
@@ -112,15 +115,34 @@ bot.on('text', async (ctx) => {
       const parts = input.split(' ');
 
       if (parts.length < 2) {
-        return ctx.reply("❌ Bitte gib sowohl einen Vornamen als auch deinen Nachnamen an.");
+        return ctx.reply("❌ Bitte gib sowohl einen Vornamen als auch deinen Nachnamen an (z.B. Marcel Nakamura).");
       }
 
       const lastName = parts[parts.length - 1];
-      if (lastName.toLowerCase() !== state.familyLastName.toLowerCase()) {
-        return ctx.reply(`❌ Dein Nachname muss *${state.familyLastName}* lauten, um zu deiner Familie zu gehören.`);
+      state.familyLastName = lastName; 
+      
+      const p = state.persons[state.current_id];
+      const mother = state.persons[p.motherId];
+      const father = state.persons[p.fatherId];
+
+      // Dynamische Zuweisung des Nachnamens auf die Eltern
+      const isMarried = Math.random() < 0.7; 
+      // Wir nutzen vorerst Germany als Kultur-Fallback für die Vornamen der Eltern
+      const mData = getRandomName("W", "Germany", lastName);
+      const fData = getRandomName("M", "Germany", lastName);
+
+      mother.name = mData.full;
+      father.name = fData.full;
+
+      if (isMarried) {
+        mother.maritalStatus = `Verheiratet mit ${father.name}`;
+        father.maritalStatus = `Verheiratet mit ${mother.name}`;
+        mother.partnerId = father.id;
+        father.partnerId = mother.id;
       }
 
-      state.persons[state.current_id].name = input;
+      p.name = input;
+      state.setupStep = 'gender';
       await writeSave(userId, state);
       return runSetup(ctx, state);
     }
@@ -307,6 +329,10 @@ bot.action(/set_country_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (state && !state.setupComplete) {
     state.country = ctx.match[1];
+    
+    // Kleines Extra: Jetzt wo wir das Land kennen, könnten wir die Vornamen 
+    // der Eltern nochmals kulturell anpassen, falls gewünscht.
+    
     await ctx.answerCbQuery();
     try { await ctx.deleteMessage(); } catch(e) {}
     return runSetup(ctx, state);
