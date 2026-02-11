@@ -172,8 +172,24 @@ bot.action('age_up', async (ctx) => {
   await sendUpdate(ctx, state, msgText, keys);
 });
 
-// --- SEXUALITÄTS-HANDLER ---
+// --- NEU: EVENT CHOICE HANDLER (FIX FÜR HÄNGENDE EREIGNISSE) ---
+bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
+  const [_, eventId, choiceIdx] = ctx.match;
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
 
+  const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
+  const event = events.find(e => e.id === eventId);
+  if (!event) return ctx.answerCbQuery("Ereignis nicht gefunden.");
+
+  const choice = event.choices[parseInt(choiceIdx)];
+  Engine.processChoice(state, choice);
+  
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, `✅ ${choice.response}`, getMainKeys(state));
+});
+
+// --- SEXUALITÄTS-HANDLER ---
 bot.action(/^set_sex_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!state) return;
@@ -185,7 +201,6 @@ bot.action(/^set_sex_(.*)$/, async (ctx) => {
 });
 
 // --- AKTIVITÄTEN-HANDLER ---
-
 bot.action('activities', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
@@ -199,26 +214,10 @@ bot.action('activities', async (ctx) => {
   await sendUpdate(ctx, state, text, keyboard);
 });
 
-// Finder/Disco Logik Implementierung
-bot.action('act_disco', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  const p = state.persons[state.current_id];
-  if (p.money < 100) return ctx.answerCbQuery("Zu wenig Geld! (Kosten: 100€)", { show_alert: true });
-  
-  p.money -= 100;
-  // Logik zur Zufallsbegegnung hier einfügen...
-  ctx.answerCbQuery("Viel Spaß in der Disco! (-100€)");
-  await sendUpdate(ctx, state, "💃 Du hattest eine wilde Nacht in der Disco.", getMainKeys(state));
-});
-
-bot.action('act_finder', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  ctx.answerCbQuery("Finder wird geöffnet...");
-  await sendUpdate(ctx, state, "📱 Finder-Dating App: Suche nach Matches...", getMainKeys(state));
-});
+bot.action('act_disco', async (ctx) => { ctx.answerCbQuery("Disco folgt in Kürze!"); });
+bot.action('act_finder', async (ctx) => { ctx.answerCbQuery("Finder folgt in Kürze!"); });
 
 // --- INTERAKTIONS-HANDLER ---
-
 bot.action(/^interact_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
@@ -226,19 +225,16 @@ bot.action(/^interact_(.*)$/, async (ctx) => {
   const npcId = ctx.match[1];
   const npc = state.persons[npcId];
   const p = state.persons[state.current_id];
-  
   if (!npc) return ctx.answerCbQuery("Person nicht gefunden.");
+  
   await ctx.answerCbQuery();
-
   const isParent = (npcId === p.motherId || npcId === p.fatherId);
-
-  let text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
+  const text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
   
   const buttons = [
     [Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎁 Geschenk', `act_gift_${npcId}`)]
   ];
 
-  // Eltern-Spezifische Option: Nach Geld fragen
   if (isParent) {
     buttons.push([Markup.button.callback('💰 Nach Geld fragen', `act_askmoney_${npcId}`)]);
   }
@@ -259,7 +255,6 @@ bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   const npc = state.persons[ctx.match[1]];
   const p = state.persons[state.current_id];
-
   const success = Math.random() * 100 < (npc.relationship - 10);
   
   if (success) {
@@ -276,7 +271,6 @@ bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
 });
 
 // --- NAVIGATION HANDLER ---
-
 bot.action('status', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
@@ -313,7 +307,6 @@ bot.action('main_menu', async (ctx) => {
 });
 
 // --- SETUP & SETTINGS ---
-
 bot.action(/set_country_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   state.country = ctx.match[1];
@@ -324,7 +317,7 @@ bot.action(/set_country_(.*)/, async (ctx) => {
 
 bot.action(/set_gender_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
-  state.persons[state.current_id].gender = ctx.match[1] === 'M' ? 'M' : 'W';
+  state.persons[state.current_id].gender = ctx.match[1];
   await ctx.answerCbQuery();
   return runSetup(ctx, state);
 });
