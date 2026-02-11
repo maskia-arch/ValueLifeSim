@@ -117,13 +117,50 @@ async function runSetup(ctx, state) {
   state.setupComplete = true;
   state.diary.push(`🌟 Du wurdest als ${p.name} in ${state.country} geboren.`);
   
-  // TIMING-FIX: Erst senden und pinnen, damit der Chat nie leer ist
+  // TIMING-FIX: Erst Nachricht senden und pinnen, damit der Chat nie leer ist
   await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
   
-  // Dann die Erstellungs-Nachrichten löschen
+  // Erst DANACH die Erstellungs-Nachrichten löschen
   const currentMsgId = ctx.callbackQuery?.message?.message_id || state.lastMessageId;
   await bulkDelete(ctx, currentMsgId, 15);
 }
+
+// --- AKTIVITÄTEN HANDLER ---
+
+bot.action('act_disco', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  const p = state.persons[state.current_id];
+
+  if (p.money < 100) return ctx.answerCbQuery("⚠️ Zu wenig Geld (100€ benötigt)!", { show_alert: true });
+  
+  p.money -= 100;
+  const encounter = Engine.generateEncounter(state, true);
+  state.persons[encounter.id] = encounter;
+  
+  await ctx.answerCbQuery(`💃 Im Club triffst du ${encounter.name}!`, { show_alert: true });
+  
+  const text = `💃 *Club-Begegnung*\n\nDu hast im Club jemanden kennengelernt: *${encounter.name}*. Was möchtest du tun?`;
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('💘 Anflirten', `interact_${encounter.id}`)],
+    [Markup.button.callback('⬅️ Zurück', 'activities')]
+  ]);
+  await sendUpdate(ctx, state, text, keyboard);
+});
+
+bot.action('act_finder', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  
+  const match = Engine.generateEncounter(state, true);
+  state.persons[match.id] = match;
+  
+  await ctx.answerCbQuery("📱 Finder: Ein neues Profil gefunden!");
+  await sendUpdate(ctx, state, Render.finderProfile(match), Markup.inlineKeyboard([
+    [Markup.button.callback('✅ Like', `interact_${match.id}`), Markup.button.callback('❌ Skip', 'act_finder')],
+    [Markup.button.callback('⬅️ Zurück', 'activities')]
+  ]));
+});
 
 // --- GAMEPLAY ACTIONS ---
 
@@ -176,14 +213,6 @@ bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
   }
   const { text, keyboard } = Render.relationships(state);
   await sendUpdate(ctx, state, text, keyboard);
-});
-
-bot.action(/^act_ask_rel_(.*)$/, async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  const npcId = ctx.match[1];
-  const result = Engine.attemptRelationship(state, npcId);
-  await ctx.answerCbQuery(result.success ? "❤️ Erfolg!" : "💔 Ablehnung", { show_alert: true });
-  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
 });
 
 bot.action(/^act_marry_(.*)$/, async (ctx) => {
@@ -279,13 +308,6 @@ bot.on('text', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!state) return;
 
-  if (state.setupStep === 'typing_custom_famname') {
-    finalizeMarriage(state, ctx.message.text.trim());
-    await bulkDelete(ctx, ctx.message.message_id, 2);
-    await ctx.reply(`💍 Neuer Familienname: ${state.familyLastName}`);
-    return sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
-  }
-
   if (state.setupStep === 'naming_baby' && state.pendingBabyId) {
     const babyName = ctx.message.text.trim();
     const baby = state.persons[state.pendingBabyId];
@@ -294,6 +316,13 @@ bot.on('text', async (ctx) => {
     state.pendingBabyId = null;
     await bulkDelete(ctx, ctx.message.message_id, 2);
     await ctx.reply(`✨ ${baby.name} wurde in die Familie aufgenommen!`);
+    return sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
+  }
+
+  if (state.setupStep === 'typing_custom_famname') {
+    finalizeMarriage(state, ctx.message.text.trim());
+    await bulkDelete(ctx, ctx.message.message_id, 2);
+    await ctx.reply(`💍 Neuer Familienname: ${state.familyLastName}`);
     return sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
   }
 
@@ -371,6 +400,14 @@ bot.action(/^act_gift_(.*)$/, async (ctx) => {
   await sendUpdate(ctx, state, text, keyboard);
 });
 
+bot.action(/^act_ask_rel_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const npcId = ctx.match[1];
+  const result = Engine.attemptRelationship(state, npcId);
+  await ctx.answerCbQuery(result.success ? "❤️ Erfolg!" : "💔 Ablehnung", { show_alert: true });
+  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
+});
+
 bot.action(/set_country_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   state.country = ctx.match[1];
@@ -405,5 +442,5 @@ bot.action('diary', async (ctx) => {
 
 bot.on('callback_query', (ctx) => ctx.answerCbQuery());
 
-// START MIT DYNAMISCHER VERSION AUS CONFIG
+// DYNAMISCHE VERSION AUS CONFIG
 bot.launch().then(() => console.log(`ValueLifeSim v${config.version} online!`));
