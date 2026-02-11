@@ -55,7 +55,6 @@ class Engine {
       if (person.isAlive) {
         person.age += 1;
         
-        // ZWANGS-FIX: Initialisierung fehlender Stats für alle NPCs
         person.heat = person.heat || 0;
         person.money = person.money || 0;
         person.happiness = person.happiness || 100;
@@ -65,26 +64,22 @@ class Engine {
         person.looks = person.looks || 50;
 
         if (id !== state.current_id) {
-          // Gesundheitsschwankungen NPCs
           person.health = Math.min(100, Math.max(0, person.health + (Math.random() * 4 - 2.5)));
           
           const isFriend = (player.friendsIds || []).includes(id);
           const isPartner = player.partnerId === id;
           const isParent = (id === player.motherId || id === player.fatherId);
           
-          // Beziehungsverfall
           let decayFactor = isParent ? 0.5 : 1;
           const decay = (isFriend || isPartner) ? Math.floor(Math.random() * 2 * decayFactor) : Math.floor(Math.random() * 3) + 1;
           person.relationship = Math.max(0, (person.relationship || 50) - decay);
 
-          // Einkommen/Kosten NPCs
           if (person.age >= 20 && person.age <= 65) {
             person.money += Math.floor((Math.random() * 500 + 100) * countryData.salary_multiplier);
           }
           person.money = Math.max(0, person.money - (50 * countryData.cost_of_living));
         }
 
-        // Todeslogik
         let deathChance = 0;
         if (person.age > 70) deathChance += (person.age - 70) * 0.05;
         if (person.health < 20) deathChance += 0.15;
@@ -130,8 +125,6 @@ class Engine {
     return { type: 'none', npcDeaths: npcDeaths };
   }
 
-  // --- HILFSMETHODEN FÜR ENCOUNTER & SOCIAL ---
-
   static generateEncounter(state, useSexualityFilter = false) {
     const player = state.persons[state.current_id];
     let targetGender = Math.random() > 0.5 ? 'M' : 'W';
@@ -155,20 +148,33 @@ class Engine {
     return npc;
   }
 
+  // --- NEU: BEZIEHUNGS-LOGIK (Trigger bei 80% Beziehung) ---
   static attemptRelationship(state, npcId) {
     const player = state.persons[state.current_id];
     const npc = state.persons[npcId];
     if (!npc) return { success: false };
 
+    // Verwandtschaftsprüfung (Sicherheitsebene in der Engine)
+    const isParent = (npcId === player.motherId || npcId === player.fatherId);
+    if (isParent) return { success: false, reason: 'family' };
+
+    // Erfolgswahrscheinlichkeit basiert auf dem Beziehungslevel
     const chance = npc.relationship / 100;
     const success = Math.random() < chance;
 
     if (success) {
       player.partnerId = npcId;
       npc.partnerId = state.current_id;
+      
+      // Marital Status für das UI Profil setzen
+      const partnerLabel = npc.gender === 'W' ? "Partnerin" : "Partner";
+      player.maritalStatus = `In einer Beziehung mit ${npc.name}`;
+      npc.maritalStatus = `In einer Beziehung mit ${player.name}`;
+      
       npc.relationship = 100;
-      npc.romance = 50;
-      state.diary.push(`❤️ Alter ${player.age}: Du bist nun in einer Beziehung mit ${npc.name}!`);
+      npc.romance = 50; 
+      
+      state.diary.push(`❤️ Alter ${player.age}: Du bist nun offiziell mit ${npc.name} zusammen!`);
       return { success: true };
     } else {
       npc.relationship = Math.max(0, npc.relationship - 20);
@@ -182,16 +188,19 @@ class Engine {
     const npc = state.persons[npcId];
     if (!npc) return { success: false };
     
-    const chance = (player.looks || 50) / 150 + 0.2;
+    // Chance basiert auf Looks des Spielers, Heat (Bekanntheit) und Zufall
+    const chance = (player.looks / 100) * 0.4 + (player.heat / 100) * 0.2 + 0.2;
     const success = Math.random() < chance;
 
     if (success) {
       player.happiness = Math.min(100, player.happiness + 15);
-      state.diary.push(`🔥 Alter ${player.age}: Ein leidenschaftliches Abenteuer mit ${npc.name}.`);
+      npc.relationship = Math.min(100, npc.relationship + 10);
+      state.diary.push(`🔥 Alter ${player.age}: Du hattest ein aufregendes Abenteuer mit ${npc.name}.`);
       return { success: true };
     } else {
       player.happiness = Math.max(0, player.happiness - 10);
-      state.diary.push(`❌ Alter ${player.age}: ${npc.name} hatte kein Interesse.`);
+      npc.relationship = Math.max(0, npc.relationship - 15);
+      state.diary.push(`❌ Alter ${player.age}: ${npc.name} hatte kein Interesse an einem Abenteuer.`);
       return { success: false };
     }
   }
