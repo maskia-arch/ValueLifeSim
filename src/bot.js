@@ -2,7 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
 const { readSave, writeSave } = require('./storage/save');
-const { initGameState, getRandomName } = require('./game/state');
+const { initGameState, getRandomName, finalizeParentsCulture } = require('./game/state');
 const Engine = require('./game/engine');
 const Render = require('./ui/render');
 const config = require('./config');
@@ -125,18 +125,9 @@ bot.on('text', async (ctx) => {
       const mother = state.persons[p.motherId];
       const father = state.persons[p.fatherId];
 
-      // Dynamische Zuweisung des Nachnamens auf die Eltern
+      // Verheiratet-Status würfeln (Namen werden nach Länderwahl in set_country finalisiert)
       const isMarried = Math.random() < 0.7; 
-      // Wir nutzen vorerst Germany als Kultur-Fallback für die Vornamen der Eltern
-      const mData = getRandomName("W", "Germany", lastName);
-      const fData = getRandomName("M", "Germany", lastName);
-
-      mother.name = mData.full;
-      father.name = fData.full;
-
       if (isMarried) {
-        mother.maritalStatus = `Verheiratet mit ${father.name}`;
-        father.maritalStatus = `Verheiratet mit ${mother.name}`;
         mother.partnerId = father.id;
         father.partnerId = mother.id;
       }
@@ -328,13 +319,15 @@ bot.action(/set_gender_(.*)/, async (ctx) => {
 bot.action(/set_country_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (state && !state.setupComplete) {
-    state.country = ctx.match[1];
-    
-    // Kleines Extra: Jetzt wo wir das Land kennen, könnten wir die Vornamen 
-    // der Eltern nochmals kulturell anpassen, falls gewünscht.
-    
+    const chosenCountry = ctx.match[1];
+    state.country = chosenCountry;
+
+    // Kulturelle Finalisierung der Elternnamen passend zum Land
+    finalizeParentsCulture(state, chosenCountry);
+
     await ctx.answerCbQuery();
     try { await ctx.deleteMessage(); } catch(e) {}
+    await writeSave(ctx.from.id, state); // Speichern nach der Finalisierung
     return runSetup(ctx, state);
   }
 });
