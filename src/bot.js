@@ -15,10 +15,9 @@ const checkGameOver = (state) => state.isGameOver || !state.persons[state.curren
 
 /**
  * SICHERHEITS-CHECK: Verhindert Klicks auf veraltete Nachrichten
- * Während des Setups deaktiviert, um den Prozess nicht zu blockieren.
  */
 async function isMessageValid(ctx, state) {
-  if (!state.setupComplete) return true; // Ausnahme für Charakter-Erstellung
+  if (!state.setupComplete) return true; 
 
   const currentMsgId = ctx.callbackQuery?.message?.message_id;
   if (state.lastMessageId && currentMsgId !== state.lastMessageId) {
@@ -33,7 +32,7 @@ async function clearChat(ctx, state) {
   if (state.lastMessageId) {
     try {
       await ctx.telegram.deleteMessage(ctx.from.id, state.lastMessageId);
-    } catch (err) { /* Ignorieren, falls bereits gelöscht */ }
+    } catch (err) { /* Ignorieren */ }
   }
 }
 
@@ -89,8 +88,13 @@ async function runSetup(ctx, state) {
     return ctx.reply("In welchem Land wirst du geboren?", Markup.inlineKeyboard(countryButtons));
   }
   
+  // ABSCHLUSS & TAGEBUCH-EINTRAG
   state.setupComplete = true;
   state.setupStep = 'done';
+  
+  if (!state.diary) state.diary = [];
+  state.diary.push(`🌟 Geburt: Du wurdest als ${p.name} in ${state.country} geboren.`);
+  
   await sendUpdate(ctx, state, `Das Abenteuer in ${state.country} beginnt! Viel Glück, ${p.name}.`, getMainKeys(state));
 }
 
@@ -278,25 +282,37 @@ bot.action(/^inherit_(.*)$/, async (ctx) => {
 bot.action('reset', async (ctx) => {
   await ctx.answerCbQuery("Reset...");
   const state = initGameState(ctx.from.id);
-  // Alte Menü-Nachricht beim Reset löschen
   try { await ctx.deleteMessage(); } catch(e) {}
   await writeSave(ctx.from.id, state);
   return runSetup(ctx, state);
 });
 
-// SETUP ACTIONS
+// --- SETUP ACTIONS (MIT SELBSTZERSTÖRUNG & SPERRE) ---
+
 bot.action(/set_gender_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
-  state.persons[state.current_id].gender = ctx.match[1];
-  await ctx.answerCbQuery();
-  return runSetup(ctx, state);
+  if (state && !state.setupComplete) {
+    state.persons[state.current_id].gender = ctx.match[1];
+    await ctx.answerCbQuery();
+    try { await ctx.deleteMessage(); } catch(e) {} // Entfernt die Auswahl sofort
+    return runSetup(ctx, state);
+  } else {
+    await ctx.answerCbQuery("⚠️ Charakter bereits initialisiert.");
+    try { await ctx.deleteMessage(); } catch(e) {}
+  }
 });
 
 bot.action(/set_country_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
-  state.country = ctx.match[1];
-  await ctx.answerCbQuery();
-  return runSetup(ctx, state);
+  if (state && !state.setupComplete) {
+    state.country = ctx.match[1];
+    await ctx.answerCbQuery();
+    try { await ctx.deleteMessage(); } catch(e) {} // Entfernt die Länderauswahl sofort
+    return runSetup(ctx, state);
+  } else {
+    await ctx.answerCbQuery("⚠️ Land bereits festgelegt.");
+    try { await ctx.deleteMessage(); } catch(e) {}
+  }
 });
 
 bot.on('callback_query', async (ctx) => { await ctx.answerCbQuery(); });

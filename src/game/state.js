@@ -2,7 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-// Hilfsfunktion: Holt einen zufälligen Namen aus der JSON
+/**
+ * Hilfsfunktion: Holt einen zufälligen Namen aus der JSON-Datenbank
+ */
 function getRandomName(gender) {
   try {
     const namesPath = path.join(process.cwd(), 'data/npc_names.json');
@@ -14,13 +16,15 @@ function getRandomName(gender) {
     
     return `${firstName} ${lastName}`;
   } catch (err) {
+    // Fallback, falls Datei fehlt oder beschädigt ist
     return gender === 'W' ? "Monika Smith" : "Andreas Kaya";
   }
 }
 
+/**
+ * Erstellt ein neues Personen-Objekt mit Standardwerten
+ */
 function createPerson(name, gender = null, parents = { m: null, f: null }, inherited = 0) {
-  // Wenn name ein String ist (auch leerer String), nehmen wir ihn. 
-  // Nur wenn name absolut null/undefined ist UND ein Geschlecht feststeht, würfeln wir.
   let finalName = name;
   if (finalName === null && gender !== null) {
     finalName = getRandomName(gender);
@@ -28,7 +32,7 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
   
   return {
     id: uuidv4(),
-    name: finalName, // Bleibt null für den Spieler, bis Bot ihn setzt
+    name: finalName, 
     gender: gender, 
     age: 0,
     money: inherited,
@@ -47,31 +51,34 @@ function createPerson(name, gender = null, parents = { m: null, f: null }, inher
   };
 }
 
+/**
+ * Initialisiert den kompletten Spielstatus für einen neuen User
+ */
 function initGameState(userId) {
-  // Eltern erhalten sofort Geschlecht und Namen
+  // Eltern-Generierung (Erhalten sofort Namen/Geschlecht)
   const mother = createPerson(null, "W");
   mother.age = Math.floor(Math.random() * 15) + 20;
   
   const father = createPerson(null, "M");
   father.age = mother.age + Math.floor(Math.random() * 5);
   
-  // Spieler wird mit name = null und gender = null erstellt
+  // Spieler-Initialisierung (Name/Geschlecht/Land folgen im Setup)
   const p = createPerson(null, null); 
   p.motherId = mother.id;
   p.fatherId = father.id;
 
   return {
     schema_version: "0.0.174",
-    setupComplete: false,
-    setupStep: 'name',
-    country: null,
-    current_id: p.id,
+    setupComplete: false,   // Sperre für Charaktererstellung
+    setupStep: 'name',      // Aktueller Schritt im Setup
+    country: null,          // Wird im Setup festgesetzt
+    current_id: p.id,       // Zeiger auf den aktuellen aktiven Charakter
     
-    // NEU: Sicherheit, Erbe & UI-Management
-    activeEventId: null,   // Verhindert Mehrfach-Klicks
-    isGameOver: false,     // Sperrt das Spiel bei Stammbaum-Ende
-    diary: [],             // Speichert die Ereignisse (Lebenschronik)
-    lastMessageId: null,   // ID der letzten Nachricht für automatische Löschung
+    // UI- & Engine-Management (Wichtig für Cloud-Sync)
+    activeEventId: null,    // Verhindert Klicks auf alte Ereignisse
+    isGameOver: false,      // Stoppt die Engine bei Tod ohne Erben
+    diary: [],              // Lebenschronik / Tagebuch
+    lastMessageId: null,    // Notwendig für automatische Nachrichten-Löschung
     
     persons: { 
       [p.id]: p,
