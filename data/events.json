@@ -11,6 +11,17 @@
     ]
   },
   {
+    "id": "imaginary_friend",
+    "text": "Du hast einen imaginären Freund namens 'Blinky' erfunden. Deine Eltern machen sich Sorgen.",
+    "min_age": 4,
+    "max_age": 7,
+    "weight": 8,
+    "choices": [
+      { "text": "Blinky verteidigen", "response": "Blinky bleibt bei dir, aber du wirkst etwas seltsam.", "effect": { "happiness": 10, "smarts": 5, "reputation": -5 } },
+      { "text": "Ihn gehen lassen", "response": "Du wirst langsam erwachsen.", "effect": { "happiness": -5, "smarts": 10 } }
+    ]
+  },
+  {
     "id": "school_bully",
     "text": "Ein Mitschüler beleidigt dich auf dem Schulhof. Wie reagierst du?",
     "min_age": 8,
@@ -22,8 +33,18 @@
     ]
   },
   {
+    "id": "exam_cheating",
+    "text": "Du hast für den großen Mathe-Test nicht gelernt. Ein Mitschüler bietet dir die Lösungen an.",
+    "min_age": 12,
+    "max_age": 18,
+    "weight": 10,
+    "choices": [
+      { "text": "Schummeln", "response": "Du bekommst eine 1, aber das Gewissen plagt dich.", "effect": { "smarts": 15, "happiness": -5, "reputation": -10 } },
+      { "text": "Ehrlich bleiben", "response": "Du verhaust den Test, aber bleibst dir treu.", "effect": { "smarts": -5, "happiness": 5, "reputation": 10 } }
+    ]
+  },
+  {
     "id": "partner_anniversary",
-    "id_comment": "Beziehungsevent",
     "requires_partner": true,
     "text": "Euer Jahrestag steht an! Dein Partner schaut dich erwartungsvoll an. Hast du etwas geplant?",
     "min_age": 16,
@@ -35,16 +56,15 @@
     ]
   },
   {
-    "id": "partner_argument",
-    "id_comment": "Beziehungsevent",
+    "id": "partner_secret",
     "requires_partner": true,
-    "text": "Ihr streitet euch heftig über den Abwasch. Die Situation eskaliert!",
+    "text": "Du findest eine mysteriöse Nachricht auf dem Handy deines Partners. Was tust du?",
     "min_age": 18,
-    "max_age": 80,
+    "max_age": 60,
     "weight": 10,
     "choices": [
-      { "text": "Nachgeben", "response": "Du schluckst deinen Stolz runter. Frieden kehrt ein.", "effect": { "happiness": -5, "relationship_partner": 10 } },
-      { "text": "Recht behalten", "response": "Du gewinnst das Argument, aber verlierst die Zuneigung.", "effect": { "happiness": 5, "relationship_partner": -20 } }
+      { "text": "Ansprechen", "response": "Es war nur eine Überraschungsparty! Du fühlst dich dumm.", "effect": { "happiness": 10, "relationship_partner": 5, "reputation": -5 } },
+      { "text": "Heimlich schnüffeln", "response": "Du wirst erwischt. Das Vertrauen ist am Boden.", "effect": { "happiness": -20, "relationship_partner": -40 } }
     ]
   },
   {
@@ -70,48 +90,24 @@
     ]
   },
   {
-    "id": "streaming_marathon",
-    "text": "Eine neue Serie ist draußen. Du verbringst das ganze Wochenende auf der Couch.",
-    "min_age": 12,
-    "max_age": 70,
-    "weight": 10,
+    "id": "found_stray_cat",
+    "text": "Du findest ein kleines, hungriges Kätzchen in einer Gasse. Es miaut dich kläglich an.",
+    "min_age": 10,
+    "max_age": 80,
+    "weight": 7,
     "choices": [
-      { "text": "Weiterschauen", "response": "Du bist bestens unterhalten, fühlst dich aber etwas steif.", "effect": { "happiness": 15, "health": -5 } }
+      { "text": "Mitnehmen", "response": "Du hast ein neues Familienmitglied, aber die Möbel leiden.", "effect": { "happiness": 20, "money": -50 } },
+      { "text": "Ignorieren", "response": "Du hast ein schlechtes Gewissen, aber dein Sofa ist sicher.", "effect": { "happiness": -10, "reputation": -5 } }
     ]
   },
   {
-    "id": "random_insult",
-    "text": "Jemand beleidigt dich im Internet grundlos unter einem deiner Fotos.",
-    "min_age": 12,
-    "max_age": 60,
-    "weight": 10,
-    "choices": [
-      { "text": "Diskutieren", "response": "Du verschwendest Stunden, aber dein Ego fühlt sich besser an.", "effect": { "happiness": -10, "smarts": 2 } },
-      { "text": "Blockieren", "response": "Du bleibst gelassen. Ein digitaler Sieg.", "effect": { "happiness": 5, "smarts": 5 } }
-    ]
-  },
-  {
-    "id": "partner_lazy_day",
-    "id_comment": "Beziehungsevent",
-    "requires_partner": true,
-    "text": "Dein Partner will den ganzen Tag im Bett bleiben und Filme schauen. Machst du mit?",
-    "min_age": 16,
-    "max_age": 99,
-    "weight": 12,
-    "choices": [
-      { "text": "Kuscheln", "response": "Ein entspannter Tag für eure Seele.", "effect": { "happiness": 20, "relationship_partner": 10, "health": 2 } },
-      { "text": "Etwas unternehmen", "response": "Dein Partner ist genervt, aber du bewegst dich wenigstens.", "effect": { "happiness": -5, "relationship_partner": -5, "health": 5 } }
-    ]
-  },
-  {
-    "id": "found_money",
-    "text": "Du hast auf der Straße einen 20-Euro-Schein gefunden!",
-    "min_age": 7,
+    "id": "lottery_win_small",
+    "text": "Du hast einen Rubbellos-Gewinn! Es ist nicht viel, aber immerhin.",
+    "min_age": 18,
     "max_age": 99,
     "weight": 5,
     "choices": [
-      { "text": "Einstecken", "response": "Dein Geldbeutel freut sich.", "effect": { "money": 20, "happiness": 5, "reputation": -5 } },
-      { "text": "Abgeben", "response": "Ehrlichkeit zahlt sich aus.", "effect": { "happiness": 10, "smarts": 5, "reputation": 10 } }
+      { "text": "Einlösen", "response": "Du gönnst dir etwas Schönes.", "effect": { "money": 200, "happiness": 15 } }
     ]
   },
   {
@@ -126,14 +122,25 @@
     ]
   },
   {
-    "id": "flu_infection",
-    "text": "Du fühlst dich schrecklich. Du hast wohl die Grippe erwischt.",
-    "min_age": 3,
-    "max_age": 99,
+    "id": "random_insult",
+    "text": "Jemand beleidigt dich im Internet grundlos unter einem deiner Fotos.",
+    "min_age": 12,
+    "max_age": 60,
     "weight": 10,
     "choices": [
-      { "text": "Ausruhen", "response": "Nach ein paar Tagen im Bett geht es dir besser.", "effect": { "health": 10, "happiness": -5 } },
-      { "text": "Trotzdem raus", "response": "Dein Zustand verschlechtert sich massiv!", "effect": { "health": -25, "happiness": -15 } }
+      { "text": "Diskutieren", "response": "Du verschwendest Stunden, aber dein Ego fühlt sich besser an.", "effect": { "happiness": -10, "smarts": 2 } },
+      { "text": "Blockieren", "response": "Du bleibst gelassen. Ein digitaler Sieg.", "effect": { "happiness": 5, "smarts": 5 } }
+    ]
+  },
+  {
+    "id": "gym_fail",
+    "text": "Du versuchst im Fitnessstudio mit Gewichten zu protzen und lässt eine Hantel auf deinen Fuß fallen.",
+    "min_age": 16,
+    "max_age": 50,
+    "weight": 8,
+    "choices": [
+      { "text": "Schmerz wegatmen", "response": "Du ziehst es durch, aber dein Fuß ist blau.", "effect": { "health": -10, "reputation": 5, "looks": 5 } },
+      { "text": "Laut schreien", "response": "Alle starren dich an. Wie peinlich.", "effect": { "health": -5, "reputation": -15, "happiness": -10 } }
     ]
   },
   {
@@ -145,6 +152,28 @@
     "choices": [
       { "text": "Sportwagen kaufen (-5000)", "response": "Du fühlst dich wieder jung, aber dein Konto blutet.", "effect": { "money": -5000, "happiness": 30, "looks": 10 } },
       { "text": "Neues Hobby suchen", "response": "Du fängst an zu gärtnern. Es beruhigt dich.", "effect": { "happiness": 10, "health": 5 } }
+    ]
+  },
+  {
+    "id": "inheritance_scam",
+    "text": "Du erhältst eine E-Mail von einem 'Anwalt' aus Übersee, der dir Millionen verspricht.",
+    "min_age": 20,
+    "max_age": 99,
+    "weight": 6,
+    "choices": [
+      { "text": "Daten senden", "response": "Es war ein Betrug! Dein Konto wurde geplündert.", "effect": { "money": -1000, "smarts": -20, "happiness": -30 } },
+      { "text": "Löschen", "response": "Du bist nicht so leicht reinzulegen.", "effect": { "smarts": 10, "happiness": 5 } }
+    ]
+  },
+  {
+    "id": "old_school_reunion",
+    "text": "Du wirst zu einem Klassentreffen eingeladen. Gehst du hin?",
+    "min_age": 25,
+    "max_age": 70,
+    "weight": 8,
+    "choices": [
+      { "text": "Hingehen", "response": "Du siehst alte Freunde und merkst, wie alt alle geworden sind.", "effect": { "happiness": 10, "reputation": 5, "add_friend": true } },
+      { "text": "Absagen", "response": "Du bleibst lieber mit deinen Erinnerungen allein.", "effect": { "happiness": -5 } }
     ]
   }
 ]
