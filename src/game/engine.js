@@ -11,7 +11,6 @@ class Engine {
     }
 
     if (!state.diary) state.diary = [];
-    // Sicherheitscheck für Arrays
     if (!player.friendsIds) player.friendsIds = [];
     if (!player.childrenIds) player.childrenIds = [];
 
@@ -56,7 +55,6 @@ class Engine {
       if (person.isAlive) {
         person.age += 1;
         
-        // ZWANGS-FIX für alle Statuswerte (verhindert undefined in der UI)
         person.heat = person.heat || 0;
         person.money = person.money || 0;
         person.happiness = person.happiness || 100;
@@ -70,7 +68,6 @@ class Engine {
           const isPartner = player.partnerId === id;
           const isParent = (id === player.motherId || id === player.fatherId);
           
-          // Beziehungsverfall (Eltern verfallen langsamer)
           let decayFactor = isParent ? 0.5 : 1;
           const decay = (isFriend || isPartner) ? Math.floor(Math.random() * 2 * decayFactor) : Math.floor(Math.random() * 3) + 1;
           person.relationship = Math.max(0, (person.relationship || 50) - decay);
@@ -81,7 +78,6 @@ class Engine {
           person.money = Math.max(0, person.money - (50 * countryData.cost_of_living));
         }
 
-        // Todeslogik
         let deathChance = 0;
         if (person.age > 70) deathChance += (person.age - 70) * 0.05;
         if (person.health < 20) deathChance += 0.15;
@@ -109,7 +105,6 @@ class Engine {
 
     if (birthEvent) return { ...birthEvent, npcDeaths };
 
-    // --- 3. Event Check ---
     if (Math.random() < 0.25) {
       try {
         const eventsPath = path.join(process.cwd(), 'data/events.json');
@@ -127,33 +122,67 @@ class Engine {
     return { type: 'none', npcDeaths: npcDeaths };
   }
 
-  // --- NEU: NPC GENERATOR FÜR SOCIAL-FEATURES ---
   static generateEncounter(state, useSexualityFilter = false) {
     const player = state.persons[state.current_id];
     let targetGender = Math.random() > 0.5 ? 'M' : 'W';
 
-    // Filter-Logik für Finder (Dating-App)
     if (useSexualityFilter && player.hasSetSexuality) {
       if (player.sexuality === 'hetero') {
         targetGender = (player.gender === 'M') ? 'W' : 'M';
       } else if (player.sexuality === 'homo') {
         targetGender = player.gender;
       }
-      // Bei 'bi' bleibt targetGender zufällig 50/50
     }
 
     const npcData = getRandomName(targetGender, state.country);
     const npc = createPerson(npcData.full, targetGender, state.country);
-    
-    // Alter an den Spieler anpassen (+/- 3 Jahre)
     npc.age = Math.max(16, player.age + (Math.floor(Math.random() * 7) - 3));
-    
-    // Initialisierung wichtiger Dating-Attribute
-    npc.relationship = Math.floor(Math.random() * 20) + 10; // Startwert 10-30%
-    npc.looks = Math.floor(Math.random() * 80) + 20;       // Optik 20-100%
+    npc.relationship = Math.floor(Math.random() * 20) + 10; 
+    npc.looks = Math.floor(Math.random() * 80) + 20;       
     npc.romance = 0;
-    
     return npc;
+  }
+
+  // --- NEU: ROMANTIK LOGIK FÜR v0.0.2g ---
+  static attemptRelationship(state, npcId) {
+    const player = state.persons[state.current_id];
+    const npc = state.persons[npcId];
+    
+    // Chance steigt mit Beziehungslevel (z.B. 100% Beziehung = fast sicher, 80% = riskant)
+    const chance = npc.relationship / 100;
+    const success = Math.random() < chance;
+
+    if (success) {
+      player.partnerId = npcId;
+      npc.partnerId = state.current_id;
+      npc.relationship = 100;
+      npc.romance = 50;
+      state.diary.push(`❤️ Alter ${player.age}: Du bist nun in einer Beziehung mit ${npc.name}!`);
+      return { success: true };
+    } else {
+      npc.relationship = Math.max(0, npc.relationship - 20);
+      state.diary.push(`💔 Alter ${player.age}: ${npc.name} hat deinen Beziehungsantrag abgelehnt.`);
+      return { success: false };
+    }
+  }
+
+  static attemptOneNightStand(state, npcId) {
+    const player = state.persons[state.current_id];
+    const npc = state.persons[npcId];
+    
+    // Chance basiert auf Looks des Spielers und Zufall
+    const chance = (player.looks || 50) / 150 + 0.2;
+    const success = Math.random() < chance;
+
+    if (success) {
+      player.happiness = Math.min(100, player.happiness + 15);
+      state.diary.push(`🔥 Alter ${player.age}: Du hattest ein leidenschaftliches Abenteuer mit ${npc.name}.`);
+      return { success: true };
+    } else {
+      player.happiness = Math.max(0, player.happiness - 10);
+      state.diary.push(`❌ Alter ${player.age}: ${npc.name} hatte kein Interesse an einem One Night Stand.`);
+      return { success: false };
+    }
   }
 
   static checkHeritage(state) {
@@ -166,7 +195,6 @@ class Engine {
       const inheritor = children.sort((a, b) => b.age - a.age)[0];
       return { possible: true, child: inheritor };
     }
-    
     state.isGameOver = true;
     return { possible: false, child: null };
   }
@@ -174,10 +202,8 @@ class Engine {
   static processChoice(state, choice) {
     const p = state.persons[state.current_id];
     if (!p.friendsIds) p.friendsIds = [];
-    
     const effects = choice.effect || {};
 
-    // Standard-Effekte
     if (effects.money) p.money += effects.money;
     ['happiness', 'smarts', 'health', 'looks', 'reputation', 'heat'].forEach(stat => {
       if (effects[stat] !== undefined) {
@@ -185,11 +211,9 @@ class Engine {
       }
     });
 
-    // --- FIX: Freund-Hinzufügen Logik ---
     if (effects.add_friend) {
       const friend = this.generateEncounter(state);
-      friend.relationship = 85; // Höherer Startwert für "Event-Freunde"
-      
+      friend.relationship = 85; 
       state.persons[friend.id] = friend;
       p.friendsIds.push(friend.id); 
     }
