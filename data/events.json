@@ -22,6 +22,32 @@
     ]
   },
   {
+    "id": "partner_anniversary",
+    "id_comment": "Beziehungsevent",
+    "requires_partner": true,
+    "text": "Euer Jahrestag steht an! Dein Partner schaut dich erwartungsvoll an. Hast du etwas geplant?",
+    "min_age": 16,
+    "max_age": 99,
+    "weight": 15,
+    "choices": [
+      { "text": "Großes Dinner (-200)", "response": "Ein wunderschöner Abend. Die Bindung ist stärker denn je.", "effect": { "money": -200, "happiness": 20, "relationship_partner": 20 } },
+      { "text": "Ehrliches Geständnis", "response": "Du hast es vergessen. Es gibt Tränen und eine frostige Nacht.", "effect": { "happiness": -15, "relationship_partner": -25 } }
+    ]
+  },
+  {
+    "id": "partner_argument",
+    "id_comment": "Beziehungsevent",
+    "requires_partner": true,
+    "text": "Ihr streitet euch heftig über den Abwasch. Die Situation eskaliert!",
+    "min_age": 18,
+    "max_age": 80,
+    "weight": 10,
+    "choices": [
+      { "text": "Nachgeben", "response": "Du schluckst deinen Stolz runter. Frieden kehrt ein.", "effect": { "happiness": -5, "relationship_partner": 10 } },
+      { "text": "Recht behalten", "response": "Du gewinnst das Argument, aber verlierst die Zuneigung.", "effect": { "happiness": 5, "relationship_partner": -20 } }
+    ]
+  },
+  {
     "id": "finder_match_event",
     "text": "Dein Handy vibriert: Du hast ein neues Match auf Finder! Es scheint jemand sehr Interessantes zu sein.",
     "min_age": 16,
@@ -44,24 +70,37 @@
     ]
   },
   {
-    "id": "pregnancy_test_positive",
-    "text": "Du (oder deine Partnerin) fühlst dich seit Tagen seltsam. Ein Test bringt Klarheit: Ein Baby ist unterwegs!",
-    "min_age": 18,
-    "max_age": 45,
-    "weight": 5,
+    "id": "streaming_marathon",
+    "text": "Eine neue Serie ist draußen. Du verbringst das ganze Wochenende auf der Couch.",
+    "min_age": 12,
+    "max_age": 70,
+    "weight": 10,
     "choices": [
-      { "text": "Freuen", "response": "Du bereitest dich innerlich auf die Geburt im nächsten Jahr vor.", "effect": { "happiness": 25, "reputation": 10 } }
+      { "text": "Weiterschauen", "response": "Du bist bestens unterhalten, fühlst dich aber etwas steif.", "effect": { "happiness": 15, "health": -5 } }
     ]
   },
   {
-    "id": "proposal_pressure",
-    "text": "Deine Eltern fragen beim Abendessen ständig, wann du endlich heiratest. Das nervt!",
-    "min_age": 22,
-    "max_age": 40,
-    "weight": 8,
+    "id": "random_insult",
+    "text": "Jemand beleidigt dich im Internet grundlos unter einem deiner Fotos.",
+    "min_age": 12,
+    "max_age": 60,
+    "weight": 10,
     "choices": [
-      { "text": "Thema wechseln", "response": "Du lenkst geschickt ab, aber die Stimmung ist gedrückt.", "effect": { "happiness": -5 } },
-      { "text": "Zustimmen", "response": "Du versprichst, darüber nachzudenken (auch wenn es gelogen ist).", "effect": { "happiness": 5, "reputation": 5 } }
+      { "text": "Diskutieren", "response": "Du verschwendest Stunden, aber dein Ego fühlt sich besser an.", "effect": { "happiness": -10, "smarts": 2 } },
+      { "text": "Blockieren", "response": "Du bleibst gelassen. Ein digitaler Sieg.", "effect": { "happiness": 5, "smarts": 5 } }
+    ]
+  },
+  {
+    "id": "partner_lazy_day",
+    "id_comment": "Beziehungsevent",
+    "requires_partner": true,
+    "text": "Dein Partner will den ganzen Tag im Bett bleiben und Filme schauen. Machst du mit?",
+    "min_age": 16,
+    "max_age": 99,
+    "weight": 12,
+    "choices": [
+      { "text": "Kuscheln", "response": "Ein entspannter Tag für eure Seele.", "effect": { "happiness": 20, "relationship_partner": 10, "health": 2 } },
+      { "text": "Etwas unternehmen", "response": "Dein Partner ist genervt, aber du bewegst dich wenigstens.", "effect": { "happiness": -5, "relationship_partner": -5, "health": 5 } }
     ]
   },
   {
@@ -73,6 +112,17 @@
     "choices": [
       { "text": "Einstecken", "response": "Dein Geldbeutel freut sich.", "effect": { "money": 20, "happiness": 5, "reputation": -5 } },
       { "text": "Abgeben", "response": "Ehrlichkeit zahlt sich aus.", "effect": { "happiness": 10, "smarts": 5, "reputation": 10 } }
+    ]
+  },
+  {
+    "id": "neighbor_dispute",
+    "text": "Dein Nachbar beschwert sich lautstark über deinen 'Lärm', obwohl du nur geatmet hast.",
+    "min_age": 18,
+    "max_age": 90,
+    "weight": 8,
+    "choices": [
+      { "text": "Entschuldigen", "response": "Du bewahrst den Frieden, fühlst dich aber gedemütigt.", "effect": { "happiness": -10, "reputation": 5 } },
+      { "text": "Ignorieren", "response": "Du drehst die Musik erst recht auf!", "effect": { "happiness": 10, "reputation": -10 } }
     ]
   },
   {

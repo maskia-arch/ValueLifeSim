@@ -13,6 +13,9 @@ class Engine {
     if (!state.diary) state.diary = [];
     if (!player.friendsIds) player.friendsIds = [];
     if (!player.childrenIds) player.childrenIds = [];
+    
+    // Initialisierung des Event-Zählers für Bad Luck Protection
+    state.yearsSinceLastEvent = state.yearsSinceLastEvent || 0;
 
     const npcDeaths = [];
     const countries = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/countries.json'), 'utf8'));
@@ -107,20 +110,32 @@ class Engine {
 
     if (birthEvent) return { ...birthEvent, npcDeaths };
 
-    if (Math.random() < 0.25) {
+    // --- 3. ÜBERARBEITETER EVENT CHECK ---
+    const eventChance = 0.30; // Erhöht auf 30% Basis-Chance
+    const forceEvent = state.yearsSinceLastEvent >= 3; // Erzwinge Event nach 3 Jahren "Ruhe"
+
+    if (Math.random() < eventChance || forceEvent) {
       try {
         const eventsPath = path.join(process.cwd(), 'data/events.json');
         const allEvents = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
-        let possibleEvents = allEvents.filter(e => player.age >= e.min_age && player.age <= e.max_age);
+        
+        // Filtert nach Alter UND Beziehungsstatus (requires_partner)
+        let possibleEvents = allEvents.filter(e => {
+          const ageMatch = player.age >= e.min_age && player.age <= e.max_age;
+          const partnerMatch = e.requires_partner ? (player.partnerId !== null) : true;
+          return ageMatch && partnerMatch;
+        });
         
         if (possibleEvents.length > 0) {
           const event = possibleEvents[Math.floor(Math.random() * possibleEvents.length)];
           state.activeEventId = event.id;
+          state.yearsSinceLastEvent = 0; // Reset counter
           return { type: 'event', data: event, npcDeaths: npcDeaths };
         }
-      } catch (err) { console.error(err); }
+      } catch (err) { console.error("Event-System Fehler:", err); }
     }
 
+    state.yearsSinceLastEvent += 1; // Erhöhe Counter, wenn kein Event stattfand
     return { type: 'none', npcDeaths: npcDeaths };
   }
 
@@ -176,21 +191,17 @@ class Engine {
     }
   }
 
-  // --- NEU: HOCHZEITS-LOGIK ---
   static attemptMarriage(state, npcId) {
     const player = state.persons[state.current_id];
     const npc = state.persons[npcId];
     
-    // Bedingung: Muss aktueller Partner sein und 100% Beziehung
     if (!npc || player.partnerId !== npcId || npc.relationship < 100) {
       return { success: false, reason: 'low_relationship' };
     }
 
-    // 98% Erfolg bei 100% Beziehung
     const success = Math.random() < 0.98;
 
     if (success) {
-      // Erfolg wird zurückgegeben, die finale Namenswahl triggert in bot.js
       return { success: true };
     } else {
       npc.relationship = Math.max(0, npc.relationship - 30);
@@ -216,7 +227,7 @@ class Engine {
       player.happiness = Math.max(0, player.happiness - 10);
       npc.relationship = Math.max(0, npc.relationship - 15);
       state.diary.push(`❌ Alter ${player.age}: ${npc.name} hatte kein Interesse an einem Abenteuer.`);
-      return { success: false };
+      return { false: true };
     }
   }
 
@@ -245,6 +256,12 @@ class Engine {
         p[stat] = Math.min(100, Math.max(0, (p[stat] || 0) + effects[stat]));
       }
     });
+
+    // NEU: Partner-Beziehungseffekt
+    if (effects.relationship_partner && p.partnerId) {
+        const partner = state.persons[p.partnerId];
+        partner.relationship = Math.min(100, Math.max(0, (partner.relationship || 0) + effects.relationship_partner));
+    }
 
     if (effects.add_friend) {
       const friend = this.generateEncounter(state);
