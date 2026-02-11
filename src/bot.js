@@ -9,10 +9,29 @@ const config = require('./config');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// Hilfsfunktion: Prüft, ob das Spiel vorbei ist
+// --- HILFSFUNKTIONEN ---
+
 const checkGameOver = (state) => state.isGameOver || !state.persons[state.current_id].isAlive;
 
-// Hauptmenü-Tastatur (dynamisch)
+// Löscht die vorherige Nachricht des Bots, um Fehlbedienung zu vermeiden
+async function clearChat(ctx, state) {
+  if (state.lastMessageId) {
+    try {
+      await ctx.telegram.deleteMessage(ctx.from.id, state.lastMessageId);
+    } catch (err) {
+      // Ignorieren, falls Nachricht bereits gelöscht oder zu alt
+    }
+  }
+}
+
+// Zentrale Funktion zum Senden von Nachrichten inkl. Cleanup
+async function sendUpdate(ctx, state, text, keyboard) {
+  await clearChat(ctx, state);
+  const msg = await ctx.replyWithMarkdown(text, keyboard);
+  state.lastMessageId = msg.message_id;
+  await writeSave(ctx.from.id, state);
+}
+
 const getMainKeys = (state) => {
   if (state.isGameOver) {
     return Markup.inlineKeyboard([[Markup.button.callback('⚙️ Neustart (Stammbaum erloschen)', 'reset')]]);
@@ -20,25 +39,23 @@ const getMainKeys = (state) => {
   return Markup.inlineKeyboard([
     [Markup.button.callback('➕ Ein Jahr älter', 'age_up')],
     [Markup.button.callback('📊 Status', 'status'), Markup.button.callback('👥 Beziehungen', 'rel')],
-    [Markup.button.callback('🌳 Stammbaum', 'tree'), Markup.button.callback('⚙️ Reset', 'reset')]
+    [Markup.button.callback('📖 Tagebuch', 'diary'), Markup.button.callback('🌳 Stammbaum', 'tree')],
+    [Markup.button.callback('⚙️ Reset', 'reset')]
   ]);
 };
 
-// Hilfsfunktion: Steuert den mehrstufigen Charakter-Erstellungsprozess
 async function runSetup(ctx, state) {
   if (!state || !state.persons || !state.current_id) {
     return ctx.reply("Fehler im Spielstand. Bitte nutze /start für einen Reset.");
   }
   const p = state.persons[state.current_id];
   
-  // 1. NAME
   if (!p.name || p.name.trim() === "") {
     state.setupStep = 'name';
     await writeSave(ctx.from.id, state);
     return ctx.reply("Willkommen bei ValueLifeSim! Wie soll dein Charakter heißen?");
   }
   
-  // 2. GESCHLECHT
   if (!p.gender) {
     state.setupStep = 'gender';
     await writeSave(ctx.from.id, state);
@@ -47,7 +64,6 @@ async function runSetup(ctx, state) {
     ]));
   }
   
-  // 3. LAND
   if (!state.country) {
     state.setupStep = 'country';
     await writeSave(ctx.from.id, state);
@@ -60,16 +76,16 @@ async function runSetup(ctx, state) {
   state.setupComplete = true;
   state.setupStep = 'done';
   await writeSave(ctx.from.id, state);
-  return ctx.reply(`Das Abenteuer in ${state.country} beginnt! Viel Glück, ${p.name}.`, getMainKeys(state));
+  return sendUpdate(ctx, state, `Das Abenteuer in ${state.country} beginnt! Viel Glück, ${p.name}.`, getMainKeys(state));
 }
 
-// --- COMMANDS ---
+// --- COMMANDS & TEXT ---
+
 bot.start(async (ctx) => {
   try {
     let state = await readSave(ctx.from.id);
     if (!state || !state.persons) {
       state = initGameState(ctx.from.id);
-      await writeSave(ctx.from.id, state);
     }
     return runSetup(ctx, state);
   } catch (err) { console.error(err); }
@@ -89,28 +105,8 @@ bot.on('text', async (ctx) => {
   } catch (err) { console.error("Text Handler Error:", err); }
 });
 
-// --- ACTIONS / SETUP ---
-bot.action(/set_gender_(.*)/, async (ctx) => {
-  await ctx.answerCbQuery();
-  let state = await readSave(ctx.from.id);
-  if (state && state.setupStep === 'gender') {
-    state.persons[state.current_id].gender = ctx.match[1];
-    await writeSave(ctx.from.id, state);
-    return runSetup(ctx, state);
-  }
-});
+// --- ACTIONS ---
 
-bot.action(/set_country_(.*)/, async (ctx) => {
-  await ctx.answerCbQuery();
-  let state = await readSave(ctx.from.id);
-  if (state && state.setupStep === 'country') {
-    state.country = ctx.match[1];
-    await writeSave(ctx.from.id, state);
-    return runSetup(ctx, state);
-  }
-});
-
-// --- ACTIONS / GAMEPLAY ---
 bot.action('age_up', async (ctx) => {
   try {
     const state = await readSave(ctx.from.id);
@@ -121,28 +117,30 @@ bot.action('age_up', async (ctx) => {
     const p = state.persons[state.current_id];
 
     if (result.type === 'death') {
+      let deathMsg = `💀 Du bist gestorben.`;
+      let keys = Markup.inlineKeyboard([[Markup.button.callback('⚙️ Neu anfangen', 'reset')]]);
+      
       if (result.hasInheritor) {
-        const child = result.inheritor;
-        return ctx.reply(`💀 Du bist gestorben. Aber dein Erbe lebt weiter!\n\nMöchtest du als dein Kind *${child.name}* (${child.age} J.) weiterspielen?`, 
-          Markup.inlineKeyboard([[Markup.button.callback(`🕹 Als ${child.name} weiterspielen`, `inherit_${child.id}`)], [Markup.button.callback('⚙️ Neu anfangen', 'reset')]]));
+        deathMsg += ` Aber dein Erbe lebt weiter!`;
+        keys = Markup.inlineKeyboard([
+          [Markup.button.callback(`🕹 Als ${result.inheritor.name} spielen`, `inherit_${result.inheritor.id}`)],
+          [Markup.button.callback('⚙️ Reset', 'reset')]
+        ]);
       } else {
         state.isGameOver = true;
-        await writeSave(ctx.from.id, state);
-        return ctx.reply("💀 Du bist gestorben und hast keine Nachkommen. Dein Stammbaum endet hier.", getMainKeys(state));
       }
+      return sendUpdate(ctx, state, deathMsg, keys);
     }
 
-    if (result.npcDeaths && result.npcDeaths.length > 0) {
-      for (const death of result.npcDeaths) await ctx.reply(`🕯 ${death.name} (${death.relation}) ist verstorben.`);
-    }
+    let msgText = `Du bist jetzt ${p.age} Jahre alt.`;
+    let keys = getMainKeys(state);
 
     if (result.type === 'event') {
-      const choices = result.data.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)]);
-      await ctx.reply(`*Jahr ${p.age} - Ereignis!*\n\n${result.data.text}`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(choices) });
-    } else {
-      await ctx.reply(`Du bist jetzt ${p.age} Jahre alt.`, getMainKeys(state));
+      msgText = `*Jahr ${p.age} - Ereignis!*\n\n${result.data.text}`;
+      keys = Markup.inlineKeyboard(result.data.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)]));
     }
-    await writeSave(ctx.from.id, state);
+
+    await sendUpdate(ctx, state, msgText, keys);
   } catch (err) { console.error(err); }
 });
 
@@ -150,136 +148,40 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   try {
     const [_, eventId, choiceIdx] = ctx.match;
     const state = await readSave(ctx.from.id);
-    if (state.activeEventId !== eventId) return ctx.answerCbQuery("Dieses Ereignis ist bereits abgeschlossen.", { show_alert: true });
+    if (state.activeEventId !== eventId) return ctx.answerCbQuery("Bereits abgeschlossen.");
 
     const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
     const event = events.find(e => e.id === eventId);
-    if (!event) return ctx.answerCbQuery("Fehler.");
-
     const choice = event.choices[parseInt(choiceIdx)];
+    
     Engine.processChoice(state, choice);
     await ctx.answerCbQuery();
-    await writeSave(ctx.from.id, state);
-    await ctx.reply(`✅ ${choice.response}`, getMainKeys(state));
+    await sendUpdate(ctx, state, `✅ ${choice.response}`, getMainKeys(state));
   } catch (err) { console.error(err); }
 });
 
-bot.action(/^inherit_(.*)$/, async (ctx) => {
+bot.action('diary', async (ctx) => {
   try {
-    const nextId = ctx.match[1];
     const state = await readSave(ctx.from.id);
-    state.current_id = nextId;
-    state.isGameOver = false;
-    await writeSave(ctx.from.id, state);
     await ctx.answerCbQuery();
-    await ctx.reply(`Ein neues Kapitel beginnt!`, getMainKeys(state));
+    await sendUpdate(ctx, state, Render.diary(state), getMainKeys(state));
   } catch (err) { console.error(err); }
 });
 
-// --- NAVIGATION & UI ---
-bot.action('main_menu', async (ctx) => {
+bot.action('status', async (ctx) => {
   try {
-    await ctx.answerCbQuery();
     const state = await readSave(ctx.from.id);
-    const p = state.persons[state.current_id];
-    await ctx.reply(`Was möchtest du tun, ${p.name}?`, getMainKeys(state));
+    await ctx.answerCbQuery();
+    await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
   } catch (err) { console.error(err); }
 });
 
 bot.action('rel', async (ctx) => {
   try {
     const state = await readSave(ctx.from.id);
-    if (checkGameOver(state)) return ctx.answerCbQuery("Kein Zugriff.");
     await ctx.answerCbQuery();
     const { text, keyboard } = Render.relationships(state);
-    ctx.replyWithMarkdown(text, keyboard);
-  } catch (err) { console.error(err); }
-});
-
-// INTERAKTIONS-MENÜ
-bot.action(/interact_(.*)/, async (ctx) => {
-  try {
-    await ctx.answerCbQuery();
-    const npcId = ctx.match[1];
-    const state = await readSave(ctx.from.id);
-    const npc = state.persons[npcId];
-    ctx.reply(`Was möchtest du mit ${npc.name} tun?`, Markup.inlineKeyboard([
-      [Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎡 Zeit verbringen', `act_spend_${npcId}`)],
-      [Markup.button.callback('💰 Um Geld bitten', `act_askmoney_${npcId}`)],
-      [Markup.button.callback('⬅️ Zurück', 'rel')]
-    ]));
-  } catch (err) { console.error(err); }
-});
-
-// --- INTERAKTIONS-HANDLER ---
-
-bot.action(/^act_talk_(.*)$/, async (ctx) => {
-  try {
-    const npcId = ctx.match[1];
-    const state = await readSave(ctx.from.id);
-    const npc = state.persons[npcId];
-    
-    const boost = Math.floor(Math.random() * 5) + 3;
-    npc.relationship = Math.min(100, (npc.relationship || 50) + boost);
-    
-    await ctx.answerCbQuery(`Gespräch beendet!`);
-    await writeSave(ctx.from.id, state);
-    await ctx.reply(`Du hast mit ${npc.name} geredet. (+${boost}% Vertrauen)`, getMainKeys(state));
-  } catch (err) { console.error(err); }
-});
-
-bot.action(/^act_spend_(.*)$/, async (ctx) => {
-  try {
-    const npcId = ctx.match[1];
-    const state = await readSave(ctx.from.id);
-    const p = state.persons[state.current_id];
-    const npc = state.persons[npcId];
-
-    const cost = 50; // Basis-Kosten
-    if (p.money < cost) return ctx.answerCbQuery("Zu wenig Geld!", { show_alert: true });
-
-    p.money -= cost;
-    const boost = Math.floor(Math.random() * 10) + 8;
-    npc.relationship = Math.min(100, (npc.relationship || 50) + boost);
-    p.happiness = Math.min(100, p.happiness + 10);
-
-    await ctx.answerCbQuery();
-    await writeSave(ctx.from.id, state);
-    await ctx.reply(`Schöner Tag mit ${npc.name}! (-$${cost}, +${boost}% Vertrauen)`, getMainKeys(state));
-  } catch (err) { console.error(err); }
-});
-
-bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
-  try {
-    const npcId = ctx.match[1];
-    const state = await readSave(ctx.from.id);
-    const p = state.persons[state.current_id];
-    const npc = state.persons[npcId];
-
-    const success = Math.random() * 100 < npc.relationship;
-    if (success && npc.money > 20) {
-      const gift = Math.floor(Math.random() * 40) + 10;
-      npc.money -= gift;
-      p.money += gift;
-      npc.relationship = Math.max(0, npc.relationship - 5);
-      await ctx.answerCbQuery(`Erfolg!`);
-      await ctx.reply(`${npc.name} hat dir $${gift} gegeben.`, getMainKeys(state));
-    } else {
-      npc.relationship = Math.max(0, npc.relationship - 10);
-      await ctx.answerCbQuery(`Abgelehnt!`);
-      await ctx.reply(`${npc.name} wollte dir kein Geld geben.`, getMainKeys(state));
-    }
-    await writeSave(ctx.from.id, state);
-  } catch (err) { console.error(err); }
-});
-
-// --- STATUS & SONSTIGES ---
-
-bot.action('status', async (ctx) => {
-  try {
-    const state = await readSave(ctx.from.id);
-    await ctx.answerCbQuery();
-    ctx.replyWithMarkdown(Render.status(state.persons[state.current_id], state), getMainKeys(state));
+    await sendUpdate(ctx, state, text, keyboard);
   } catch (err) { console.error(err); }
 });
 
@@ -287,7 +189,7 @@ bot.action('tree', async (ctx) => {
   try {
     const state = await readSave(ctx.from.id);
     await ctx.answerCbQuery();
-    ctx.replyWithMarkdown(Render.tree(state), getMainKeys(state));
+    await sendUpdate(ctx, state, Render.tree(state), getMainKeys(state));
   } catch (err) { console.error(err); }
 });
 
@@ -295,6 +197,21 @@ bot.action('reset', async (ctx) => {
   await ctx.answerCbQuery("Reset...");
   const state = initGameState(ctx.from.id);
   await writeSave(ctx.from.id, state);
+  return runSetup(ctx, state);
+});
+
+// Setup Handlers
+bot.action(/set_gender_(.*)/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  state.persons[state.current_id].gender = ctx.match[1];
+  await ctx.answerCbQuery();
+  return runSetup(ctx, state);
+});
+
+bot.action(/set_country_(.*)/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  state.country = ctx.match[1];
+  await ctx.answerCbQuery();
   return runSetup(ctx, state);
 });
 

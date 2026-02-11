@@ -5,12 +5,17 @@ class Engine {
   static nextYear(state) {
     const player = state.persons[state.current_id];
     
-    // Sicherheitscheck: Wenn das Spiel vorbei ist oder der Spieler tot, keine Alterung zulassen
+    // Sicherheitscheck: Keine Alterung bei Tod oder Game Over
     if (state.isGameOver || !player.isAlive) {
       return { type: 'death_locked' };
     }
 
+    // Initialisierung des Tagebuchs, falls nicht vorhanden
+    if (!state.diary) state.diary = [];
+
     const npcDeaths = [];
+    const countries = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/countries.json'), 'utf8'));
+    const countryData = countries.find(c => c.name === state.country) || countries[0];
 
     // 1. Alle Personen im Spielstand simulieren
     for (let id in state.persons) {
@@ -18,7 +23,7 @@ class Engine {
       if (person.isAlive) {
         person.age += 1;
         
-        // --- NPC LOGIK (Eltern/Kinder/Freunde) ---
+        // --- NPC LOGIK ---
         if (id !== state.current_id) {
           person.health = Math.min(100, Math.max(0, person.health + (Math.random() * 4 - 2.5)));
           
@@ -26,13 +31,13 @@ class Engine {
           const decay = Math.floor(Math.random() * 3) + 1;
           person.relationship = Math.max(0, (person.relationship || 50) - decay);
 
-          // NPC-Finanzen
+          // NPC-Finanzen basierend auf Ländern
           if (person.age >= 20 && person.age <= 65) {
-            person.money += Math.floor(Math.random() * 500) + 100;
+            person.money += Math.floor((Math.random() * 500 + 100) * countryData.salary_multiplier);
           } else if (person.age > 65) {
-            person.money += Math.floor(Math.random() * 200) + 50;
+            person.money += Math.floor((Math.random() * 200 + 50) * countryData.salary_multiplier);
           }
-          person.money = Math.max(0, person.money - 50);
+          person.money = Math.max(0, person.money - (50 * countryData.cost_of_living));
         }
 
         // --- TODESLOGIK ---
@@ -44,41 +49,40 @@ class Engine {
           person.isAlive = false;
           
           if (id === state.current_id) {
-            // Spieler stirbt -> Erbe-Check einleiten
+            // Spieler stirbt
+            state.diary.push(`🕯️ Alter ${person.age}: Du bist in ${state.country} verstorben.`);
             const inheritance = this.checkHeritage(state);
             return { type: 'death', hasInheritor: inheritance.possible, inheritor: inheritance.child };
           } else {
             let relation = "Bekannte(r)";
             if (id === player.motherId) relation = "Mutter";
             if (id === player.fatherId) relation = "Vater";
-            // Check ob es ein Kind ist
             if (player.childrenIds.includes(id)) relation = "Kind";
             
             npcDeaths.push({ name: person.name, relation: relation });
+            state.diary.push(`🕯️ Alter ${player.age}: Deine ${relation} ${person.name} ist verstorben.`);
           }
         }
       }
     }
 
-    // 2. EVENT CHECK (mit Gewichtung und Sperre)
+    // 2. EVENT CHECK (mit Gewichtung und Tagebuch-Lock)
     if (Math.random() < 0.25) {
       try {
         const eventsPath = path.join(process.cwd(), 'data/events.json');
         const allEvents = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
         
-        // Filter nach Alter
         let possibleEvents = allEvents.filter(e => player.age >= e.min_age && player.age <= e.max_age);
         
-        // Gewichtetes Zufallssystem
         const weightedPool = [];
         possibleEvents.forEach(e => {
-          const weight = e.weight || 10; // Standardgewicht 10
+          const weight = e.weight || 10;
           for (let i = 0; i < weight; i++) weightedPool.push(e);
         });
 
         if (weightedPool.length > 0) {
           const event = weightedPool[Math.floor(Math.random() * weightedPool.length)];
-          state.activeEventId = event.id; // Event-Lock im State setzen
+          state.activeEventId = event.id;
           return { type: 'event', data: event, npcDeaths: npcDeaths };
         }
       } catch (err) { console.error(err); }
@@ -87,7 +91,6 @@ class Engine {
     return { type: 'none', npcDeaths: npcDeaths };
   }
 
-  // Hilfsfunktion: Prüft ob Kinder als Erben vorhanden sind
   static checkHeritage(state) {
     const player = state.persons[state.current_id];
     const children = player.childrenIds
@@ -95,7 +98,6 @@ class Engine {
       .filter(c => c && c.isAlive);
 
     if (children.length > 0) {
-      // Wählt das älteste lebende Kind als primären Erben
       const inheritor = children.sort((a, b) => b.age - a.age)[0];
       return { possible: true, child: inheritor };
     }
@@ -117,7 +119,10 @@ class Engine {
       }
     });
     
-    // WICHTIG: Event-Lock nach der Wahl aufheben
+    // Tagebuch-Eintrag für die Entscheidung
+    if (!state.diary) state.diary = [];
+    state.diary.push(`📝 Alter ${p.age}: ${choice.response}`);
+    
     state.activeEventId = null;
   }
 }

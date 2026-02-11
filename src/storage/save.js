@@ -1,31 +1,43 @@
-const fs = require('fs-extra');
-const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
 
-// Wir nutzen den absoluten Pfad zum Hauptverzeichnis des Projekts
-const SAVE_DIR = path.join(process.cwd(), 'saves');
-
-async function writeSave(userId, data) {
-  try {
-    // Dieser Befehl erstellt den Ordner 'saves', falls er fehlt
-    await fs.ensureDir(SAVE_DIR);
-    const filePath = path.join(SAVE_DIR, `${userId}.json`);
-    await fs.writeJson(filePath, data);
-    console.log(`Save erfolgreich für User ${userId}`);
-  } catch (err) {
-    console.error("KRITISCHER SPEICHERFEHLER:", err);
-    // Wir werfen den Fehler nicht weiter, damit der Bot nicht abstürzt
-  }
-}
+// Render stellt diese Variablen automatisch über process.env bereit
+const supabase = createClient(
+  process.env.SUPABASE_URL, 
+  process.env.SUPABASE_KEY
+);
 
 async function readSave(userId) {
   try {
-    const filePath = path.join(SAVE_DIR, `${userId}.json`);
-    if (!(await fs.pathExists(filePath))) return null;
-    return await fs.readJson(filePath);
+    const { data, error } = await supabase
+      .from('saves')
+      .select('state')
+      .eq('user_id', userId.toString())
+      .single();
+
+    if (error || !data) return null;
+    return data.state;
   } catch (err) {
-    console.error("Ladefehler:", err);
+    // Falls kein Spielstand existiert, geben wir null zurück
     return null;
   }
 }
 
-module.exports = { writeSave, readSave };
+async function writeSave(userId, state) {
+  try {
+    // Upsert: Aktualisiert den Stand oder erstellt ihn neu, falls die ID nicht existiert
+    const { error } = await supabase
+      .from('saves')
+      .upsert({ 
+        user_id: userId.toString(), 
+        state: state,
+        updated_at: new Date() 
+      }, { onConflict: 'user_id' });
+
+    if (error) throw error;
+    console.log(`Cloud-Save erfolgreich für User ${userId}`);
+  } catch (err) {
+    console.error("DB-Schreibfehler:", err.message);
+  }
+}
+
+module.exports = { readSave, writeSave };

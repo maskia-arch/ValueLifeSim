@@ -61,13 +61,18 @@ function initGameState(userId) {
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.172",
+    schema_version: "0.0.174",
     setupComplete: false,
     setupStep: 'name',
     country: null,
     current_id: p.id,
-    activeEventId: null,
-    isGameOver: false,
+    
+    // NEU: Sicherheit, Erbe & UI-Management
+    activeEventId: null,   // Verhindert Mehrfach-Klicks
+    isGameOver: false,     // Sperrt das Spiel bei Stammbaum-Ende
+    diary: [],             // Speichert die Ereignisse (Lebenschronik)
+    lastMessageId: null,   // ID der letzten Nachricht für automatische Löschung
+    
     persons: { 
       [p.id]: p,
       [mother.id]: mother,
