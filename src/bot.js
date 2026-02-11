@@ -14,12 +14,34 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 async function isMessageValid(ctx, state) {
   if (!state || !state.setupComplete) return true; 
   const currentMsgId = ctx.callbackQuery?.message?.message_id;
-  // Validierung gegen die gepinnte Nachricht, um doppelte Menüs zu verhindern
   if (state.pinMessageId && currentMsgId && currentMsgId !== state.pinMessageId) {
     await ctx.answerCbQuery("⚠️ Bitte nutze das angeheftete Menü oben.", { show_alert: true });
     return false;
   }
   return true;
+}
+
+/**
+ * Löscht die letzte temporäre Benachrichtigung (Feedback-Texte)
+ */
+async function clearTemporary(ctx, state) {
+  if (state.lastTempId) {
+    try {
+      await ctx.telegram.deleteMessage(ctx.from.id, state.lastTempId);
+    } catch (err) {}
+    state.lastTempId = null;
+  }
+}
+
+/**
+ * Sendet eine flüchtige Nachricht UNTER dem Pin (für Interaktions-Feedback)
+ * Verschwindet beim nächsten Altern oder einer neuen Interaktion.
+ */
+async function sendTemporary(ctx, state, text) {
+  await clearTemporary(ctx, state); 
+  const msg = await ctx.replyWithMarkdown(text);
+  state.lastTempId = msg.message_id;
+  await writeSave(ctx.from.id, state);
 }
 
 async function bulkDelete(ctx, startId, count = 25) {
@@ -32,7 +54,7 @@ async function bulkDelete(ctx, startId, count = 25) {
 }
 
 /**
- * Kernfunktion für das UI: Aktualisiert die gepinnte Nachricht oder pinnt neu
+ * Kernfunktion für das UI: Aktualisiert ausschließlich den GEPINNTEN Status-Screen
  */
 async function sendUpdate(ctx, state, text, keyboard) {
   const userId = ctx.from.id;
@@ -46,7 +68,7 @@ async function sendUpdate(ctx, state, text, keyboard) {
       await writeSave(userId, state);
       return;
     } catch (err) {
-      state.pinMessageId = null; // Falls gelöscht, beim nächsten Mal neu pinnen
+      state.pinMessageId = null; 
     }
   }
 
@@ -123,8 +145,10 @@ async function runSetup(ctx, state) {
 bot.action('age_up', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
-  await ctx.answerCbQuery();
   
+  await ctx.answerCbQuery();
+  await clearTemporary(ctx, state); // Feedback-Texte löschen beim Altern
+
   const result = Engine.nextYear(state);
   const p = state.persons[state.current_id];
 
@@ -160,19 +184,29 @@ bot.action(/^act_talk_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   const npc = state.persons[ctx.match[1]];
   npc.relationship = Math.min(100, (npc.relationship || 0) + 5);
-  await ctx.answerCbQuery("💬 Gespräch geführt.");
-  await sendUpdate(ctx, state, `Du hast dich mit ${npc.name} unterhalten.`, getMainKeys(state));
+  
+  await ctx.answerCbQuery();
+  await sendTemporary(ctx, state, `💬 Du hast dich mit ${npc.name} unterhalten.`);
+  
+  const { text, keyboard } = Render.relationships(state);
+  await sendUpdate(ctx, state, text, keyboard);
 });
 
 bot.action(/^act_gift_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   const p = state.persons[state.current_id];
   const npc = state.persons[ctx.match[1]];
+  
   if (p.money < 20) return ctx.answerCbQuery("⚠️ Zu wenig Geld!", { show_alert: true });
+  
   p.money -= 20;
   npc.relationship = Math.min(100, (npc.relationship || 0) + 15);
+  
   await ctx.answerCbQuery("🎁 Geschenk übergeben.");
-  await sendUpdate(ctx, state, `Du hast ${npc.name} ein Geschenk gekauft.`, getMainKeys(state));
+  await sendTemporary(ctx, state, `🎁 Du hast ${npc.name} ein Geschenk gekauft.`);
+  
+  const { text, keyboard } = Render.relationships(state);
+  await sendUpdate(ctx, state, text, keyboard);
 });
 
 bot.action(/^interact_(.*)$/, async (ctx) => {
@@ -191,6 +225,8 @@ bot.action(/^interact_(.*)$/, async (ctx) => {
     else if (npc.relationship >= 80) buttons.push([Markup.button.callback('❤️ Antrag', `act_ask_rel_${npcId}`)]);
   }
   buttons.push([Markup.button.callback('⬅️ Zurück', 'rel')]);
+  
+  await clearTemporary(ctx, state); // Text löschen beim Wechsel der Ansicht
   await sendUpdate(ctx, state, text, Markup.inlineKeyboard(buttons));
 });
 
@@ -200,12 +236,14 @@ bot.action('rel', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
   const { text, keyboard } = Render.relationships(state);
+  await clearTemporary(ctx, state);
   await sendUpdate(ctx, state, text, keyboard);
 });
 
 bot.action('activities', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!await isMessageValid(ctx, state)) return;
+  await clearTemporary(ctx, state);
   await sendUpdate(ctx, state, "🎡 *Aktivitäten*", Markup.inlineKeyboard([
     [Markup.button.callback('💃 Disco (100€)', 'act_disco'), Markup.button.callback('📱 Finder', 'act_finder')],
     [Markup.button.callback('⬅️ Zurück', 'main_menu')]
@@ -214,12 +252,14 @@ bot.action('activities', async (ctx) => {
 
 bot.action('main_menu', async (ctx) => {
   const state = await readSave(ctx.from.id);
+  await clearTemporary(ctx, state);
   await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
 });
 
 bot.action('reset', async (ctx) => {
   const userId = ctx.from.id;
   const state = await readSave(userId);
+  await clearTemporary(ctx, state);
   if (state?.pinMessageId) {
     try {
       await ctx.telegram.unpinChatMessage(userId, { message_id: state.pinMessageId });
