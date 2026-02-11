@@ -79,7 +79,7 @@ function createPerson(name, gender = null, country = 'germany', parents = { m: n
 }
 
 /**
- * Initialisiert den globalen Spielzustand für v0.0.3.
+ * Initialisiert den globalen Spielzustand für v0.0.3i.
  */
 function initGameState(userId) {
   const mother = createPerson(null, "W");
@@ -93,17 +93,18 @@ function initGameState(userId) {
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.3", // Update der Version
+    schema_version: "0.0.3i", 
     setupComplete: false,
     setupStep: 'name',
     country: null, 
     familyLastName: null, 
     current_id: p.id,
     activeEventId: null,
+    pendingBabyId: null,     // NEU: Hält die ID des Babys während der Namenswahl
     isGameOver: false,
     diary: [],
     lastMessageId: null,
-    pinMessageId: null,      // NEU: Hält die ID der angehefteten Statusnachricht
+    pinMessageId: null,      
     persons: { 
       [p.id]: p,
       [mother.id]: mother,
