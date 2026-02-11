@@ -17,7 +17,7 @@ async function isMessageValid(ctx, state) {
   if (!state.setupComplete) return true; 
   const currentMsgId = ctx.callbackQuery?.message?.message_id;
   if (state.lastMessageId && currentMsgId !== state.lastMessageId) {
-    await ctx.answerCbQuery("⚠️ Diese Nachricht ist veraltet.", { show_alert: true });
+    await ctx.answerCbQuery("⚠️ Diese Nachricht ist veraltet. Bitte nutze das aktuelle Menü.", { show_alert: true });
     return false;
   }
   return true;
@@ -47,7 +47,6 @@ const getMainKeys = (state) => {
     [Markup.button.callback('📊 Status', 'status'), Markup.button.callback('👥 Beziehungen', 'rel')]
   ];
 
-  // NEU: Aktivitäten (Dating/Disco) erst ab 16 Jahren sichtbar
   if (p.age >= 16) {
     rows.push([Markup.button.callback('🎡 Aktivitäten', 'activities'), Markup.button.callback('📖 Tagebuch', 'diary')]);
   } else {
@@ -77,8 +76,6 @@ async function runSetup(ctx, state) {
     ]));
   }
 
-  // Sexualität wurde aus dem Initial-Setup entfernt und auf Alter 16 verschoben
-  
   if (!state.country) {
     state.setupStep = 'country';
     await writeSave(ctx.from.id, state);
@@ -92,6 +89,14 @@ async function runSetup(ctx, state) {
   await sendUpdate(ctx, state, `Das Abenteuer beginnt!`, getMainKeys(state));
 }
 
+// --- COMMANDS ---
+
+bot.start(async (ctx) => {
+  const state = initGameState(ctx.from.id);
+  await writeSave(ctx.from.id, state);
+  return runSetup(ctx, state);
+});
+
 // --- TEXT HANDLER ---
 
 bot.on('text', async (ctx) => {
@@ -101,7 +106,7 @@ bot.on('text', async (ctx) => {
 
   if (!state.setupComplete && state.setupStep === 'name') {
     const input = ctx.message.text.trim();
-    if (input.split(' ').length < 2) return ctx.reply("Vor- & Nachname bitte.");
+    if (input.split(' ').length < 2) return ctx.reply("❌ Bitte gib Vor- & Nachnamen an.");
     state.familyLastName = input.split(' ').pop();
     state.persons[state.current_id].name = input;
     state.setupStep = 'gender';
@@ -119,7 +124,7 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// --- GAMEPLAY & AGE UP ---
+// --- GAMEPLAY ACTIONS ---
 
 bot.action('age_up', async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -137,14 +142,13 @@ bot.action('age_up', async (ctx) => {
     return sendUpdate(ctx, state, deathMsg, keys);
   }
 
-  // NEU: Sexualität mit 16 abfragen
   if (p.age === 16 && !p.hasSetSexuality) {
     state.setupStep = 'sexuality';
     await writeSave(ctx.from.id, state);
-    return ctx.reply("✨ Du wirst erwachsen! Was ist deine sexuelle Orientierung?", Markup.inlineKeyboard([
-      [Markup.button.callback('👫 Heterosexuell', 'set_sex_hetero')],
-      [Markup.button.callback('👬 Homosexuell', 'set_sex_homo')],
-      [Markup.button.callback('🌍 Bisexuell', 'set_sex_bi')]
+    return ctx.reply("✨ Du wirst erwachsen! Was ist deine Orientierung?", Markup.inlineKeyboard([
+      [Markup.button.callback('👫 Hetero', 'set_sex_hetero')],
+      [Markup.button.callback('👬 Homo', 'set_sex_homo')],
+      [Markup.button.callback('🌍 Bi', 'set_sex_bi')]
     ]));
   }
 
@@ -152,120 +156,94 @@ bot.action('age_up', async (ctx) => {
     state.setupStep = 'naming_baby';
     state.pendingBabyId = result.babyId;
     await writeSave(ctx.from.id, state);
-    return ctx.reply(`👶 Glückwunsch! Ein ${result.gender === 'W' ? 'Mädchen' : 'Junge'} wurde geboren. Wie soll das Kind heißen?`);
+    return ctx.reply(`👶 Ein ${result.gender === 'W' ? 'Mädchen' : 'Junge'}! Name?`);
   }
 
   let msgText = `Du bist jetzt ${p.age} Jahre alt.`;
-  if (result.type === 'event') msgText = `*Ereignis!*\n\n${result.data.text}`;
-  await sendUpdate(ctx, state, msgText, getMainKeys(state));
-});
+  let keys = getMainKeys(state);
 
-// --- DATING & AKTIVITÄTEN ---
-
-bot.action('activities', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  const p = state.persons[state.current_id];
-  
-  if (p.age < 16) return ctx.answerCbQuery("Du bist noch zu jung dafür!", { show_alert: true });
-
-  const text = "🎡 *Was möchtest du unternehmen?*";
-  const keys = Markup.inlineKeyboard([
-    [Markup.button.callback('💃 In die Disco gehen (-100)', 'act_disco')],
-    [Markup.button.callback('📱 Finder-Dating App', 'act_finder')],
-    [Markup.button.callback('⬅️ Zurück', 'main_menu')]
-  ]);
-  await sendUpdate(ctx, state, text, keys);
-});
-
-bot.action('act_disco', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  const p = state.persons[state.current_id];
-  if (p.money < 100) return ctx.answerCbQuery("Zu wenig Geld!", { show_alert: true });
-  p.money -= 100;
-  
-  if (Math.random() > 0.4) {
-    const gender = (p.sexuality === 'homo' ? p.gender : (p.gender === 'M' ? 'W' : 'M'));
-    const npcData = getRandomName(gender, state.country);
-    const match = createPerson(npcData.full, gender, state.country);
-    match.age = p.age + (Math.floor(Math.random() * 5) - 2);
-    state.persons[match.id] = match;
-    
-    const text = `💃 In der Disco hast du ${match.name} kennengelernt!`;
-    const keys = Markup.inlineKeyboard([
-      [Markup.button.callback('💘 Flirten', `interact_${match.id}`)],
-      [Markup.button.callback('⬅️ Zurück', 'activities')]
-    ]);
-    return sendUpdate(ctx, state, text, keys);
+  if (result.type === 'event') {
+    msgText = `*Ereignis!*\n\n${result.data.text}`;
+    keys = Markup.inlineKeyboard(result.data.choices.map((c, i) => [
+      Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)
+    ]));
   }
-  await sendUpdate(ctx, state, "💃 Die Nacht war enttäuschend. Niemand interessantes dabei.", getMainKeys(state));
-});
-
-// --- ROMANTIK ---
-
-bot.action(/interact_(.*)/, async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  const npc = state.persons[ctx.match[1]];
-  const p = state.persons[state.current_id];
   
-  let text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}% | ❤️ Liebe: ${npc.romance || 0}%`;
-  let buttons = [
-    [Markup.button.callback('💬 Reden', `act_talk_${npc.id}`)]
-  ];
-
-  // Romantische Interaktionen erst ab 16
-  if (p.age >= 16) {
-    buttons.push([Markup.button.callback('🌹 Date (Romantik steigern)', `act_romance_${npc.id}`)]);
-    if ((npc.romance || 0) > 30 && p.partnerId !== npc.id) {
-      buttons.push([Markup.button.callback('👫 Partnerschaft vorschlagen', `act_ask_partner_${npc.id}`)]);
-    }
-    if (p.partnerId === npc.id) {
-      buttons.push([Markup.button.callback('💍 Heiratsantrag machen', `act_propose_${npc.id}`)]);
-      if (p.gender !== npc.gender) {
-        buttons.push([Markup.button.callback('🔞 Sex haben', `act_sex_${npc.id}`)]);
-      }
-    }
-  }
-
-  buttons.push([Markup.button.callback('⬅️ Zurück', 'rel')]);
-  await sendUpdate(ctx, state, text, Markup.inlineKeyboard(buttons));
+  await sendUpdate(ctx, state, msgText, keys);
 });
 
-// --- NAVIGATION & SETTINGS ---
-
-bot.action(/^set_sex_(.*)$/, async (ctx) => {
+bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
+  const [_, eventId, choiceIdx] = ctx.match;
   const state = await readSave(ctx.from.id);
-  const p = state.persons[state.current_id];
-  p.sexuality = ctx.match[1];
-  p.hasSetSexuality = true;
-  await ctx.answerCbQuery("Präferenz gespeichert!");
-  await sendUpdate(ctx, state, "✨ Du hast deine Orientierung festgelegt. Dein Leben geht weiter!", getMainKeys(state));
+  if (!await isMessageValid(ctx, state)) return;
+
+  const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
+  const event = events.find(e => e.id === eventId);
+  const choice = event.choices[parseInt(choiceIdx)];
+  
+  Engine.processChoice(state, choice);
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, `✅ ${choice.response}`, getMainKeys(state));
+});
+
+// --- NAVIGATION HANDLER (GEFIXTE BUTTONS) ---
+
+bot.action('status', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
+});
+
+bot.action('rel', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  await ctx.answerCbQuery();
+  const { text, keyboard } = Render.relationships(state);
+  await sendUpdate(ctx, state, text, keyboard);
+});
+
+bot.action('diary', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, Render.diary(state), getMainKeys(state));
+});
+
+bot.action('tree', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, Render.tree(state), getMainKeys(state));
 });
 
 bot.action('main_menu', async (ctx) => {
   const state = await readSave(ctx.from.id);
-  const p = state.persons[state.current_id];
-  await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
 });
+
+// --- SETUP & SETTINGS ---
 
 bot.action(/set_country_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
-  if (state && !state.setupComplete) {
-    state.country = ctx.match[1];
-    finalizeParentsCulture(state, state.country);
-    await ctx.answerCbQuery();
-    return runSetup(ctx, state);
-  }
+  state.country = ctx.match[1];
+  finalizeParentsCulture(state, state.country);
+  await ctx.answerCbQuery();
+  return runSetup(ctx, state);
 });
 
 bot.action(/set_gender_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
-  state.persons[state.current_id].gender = ctx.match[1].replace('set_gender_', '');
+  state.persons[state.current_id].gender = ctx.match[1] === 'M' ? 'M' : 'W';
+  await ctx.answerCbQuery();
   return runSetup(ctx, state);
 });
 
 bot.action('reset', async (ctx) => {
   const state = initGameState(ctx.from.id);
   await writeSave(ctx.from.id, state);
+  await ctx.answerCbQuery("Reset...");
   return runSetup(ctx, state);
 });
 
