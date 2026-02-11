@@ -172,21 +172,65 @@ bot.action('age_up', async (ctx) => {
   await sendUpdate(ctx, state, msgText, keys);
 });
 
-bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
-  const [_, eventId, choiceIdx] = ctx.match;
-  const state = await readSave(ctx.from.id);
-  if (!await isMessageValid(ctx, state)) return;
+// --- NEU: SEXUALITÄTS-HANDLER ---
 
-  const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
-  const event = events.find(e => e.id === eventId);
-  const choice = event.choices[parseInt(choiceIdx)];
-  
-  Engine.processChoice(state, choice);
-  await ctx.answerCbQuery();
-  await sendUpdate(ctx, state, `✅ ${choice.response}`, getMainKeys(state));
+bot.action(/^set_sex_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!state) return;
+  const p = state.persons[state.current_id];
+  p.sexuality = ctx.match[1];
+  p.hasSetSexuality = true;
+  await ctx.answerCbQuery("Präferenz gespeichert!");
+  await sendUpdate(ctx, state, `✨ Deine Orientierung wurde auf ${ctx.match[1]} gesetzt.`, getMainKeys(state));
 });
 
-// --- NAVIGATION HANDLER (GEFIXTE BUTTONS) ---
+// --- NEU: AKTIVITÄTEN-HANDLER ---
+
+bot.action('activities', async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  await ctx.answerCbQuery();
+  
+  const text = "🎡 *Was möchtest du unternehmen?*";
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('💃 Disco', 'act_disco'), Markup.button.callback('📱 Finder', 'act_finder')],
+    [Markup.button.callback('⬅️ Zurück', 'main_menu')]
+  ]);
+  await sendUpdate(ctx, state, text, keyboard);
+});
+
+// Platzhalter für Disco/Finder Logik (muss in bot.js oder engine.js definiert sein)
+bot.action('act_disco', async (ctx) => { ctx.answerCbQuery("Disco folgt in Kürze!"); });
+bot.action('act_finder', async (ctx) => { ctx.answerCbQuery("Finder folgt in Kürze!"); });
+
+// --- INTERAKTIONS-HANDLER ---
+
+bot.action(/^interact_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  if (!await isMessageValid(ctx, state)) return;
+  const npcId = ctx.match[1];
+  const npc = state.persons[npcId];
+  if (!npc) return ctx.answerCbQuery("Person nicht gefunden.");
+  
+  await ctx.answerCbQuery();
+  const text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎁 Geschenk', `act_gift_${npcId}`)],
+    [Markup.button.callback('⬅️ Zurück', 'rel')]
+  ]);
+  await sendUpdate(ctx, state, text, keyboard);
+});
+
+// Beispiel Talk-Handler
+bot.action(/^act_talk_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const npc = state.persons[ctx.match[1]];
+  npc.relationship = Math.min(100, (npc.relationship || 0) + 5);
+  await ctx.answerCbQuery("Gutes Gespräch!");
+  await sendUpdate(ctx, state, `💬 Du hast mit ${npc.name} geredet.`, getMainKeys(state));
+});
+
+// --- NAVIGATION HANDLER ---
 
 bot.action('status', async (ctx) => {
   const state = await readSave(ctx.from.id);

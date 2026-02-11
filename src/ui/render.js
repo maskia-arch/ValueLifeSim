@@ -46,6 +46,9 @@ class Render {
     // NEU: Status-Icons (Heirat & Schwangerschaft)
     const maritalText = p.maritalStatus ? `💍 *Status:* ${p.maritalStatus}\n` : "";
     const pregnancyText = p.isPregnant ? `🤰 *Status:* Schwanger (Geburt im nächsten Jahr)\n` : "";
+    
+    // Fix für undefined Heat
+    const heatVal = p.heat !== undefined ? p.heat : 0;
 
     return `✨ *ValueLifeSim v${config.version}*\n` +
            `${lifeStatus}` + 
@@ -56,24 +59,24 @@ class Render {
            `💰 *Bank:* ${moneyText}\n\n` +
            `🏥 *Gesundheit:* ${p.health}%\n` +
            `😊 *Glück:* ${p.happiness}%\n` +
-           `🎓 *Smarts:* ${p.smarts}% | 🔥 *Heat:* ${p.heat}%\n` +
+           `🎓 *Smarts:* ${p.smarts}% | 🔥 *Heat:* ${heatVal}%\n` +
            `🏆 *Ruf:* ${p.reputation || 50}%`;
   }
 
   /**
-   * NEU: Design für die Dating-App "Finder"
+   * Design für die Dating-App "Finder"
    */
   static finderProfile(npc) {
     const genderIcon = npc.gender === 'W' ? '👩' : '👨';
     return `📱 *Finder - Neues Profil*\n\n` +
            `${genderIcon} *Name:* ${npc.name}\n` +
            `🎂 *Alter:* ${npc.age}\n` +
-           `✨ *Looks:* ${npc.looks}%\n\n` +
+           `✨ *Looks:* ${npc.looks || 0}%\n\n` +
            `_„Interessiert an einem Treffen?“_`;
   }
 
   /**
-   * Beziehungsliste mit Romantik-Anzeige
+   * Beziehungsliste mit Fix für Eltern und Freunde
    */
   static relationships(state) {
     if (!state || !state.persons) return { text: "Keine Beziehungen.", keyboard: null };
@@ -82,29 +85,41 @@ class Render {
     let text = `👥 *Beziehungen & Familie (v${config.version})*\n\n`;
     const buttons = [];
 
+    // Alle Personen außer dem Spieler selbst
     const personIds = Object.keys(state.persons).filter(id => id !== state.current_id);
 
     personIds.forEach(id => {
       const p = state.persons[id];
       const relation = this.getRelationLabel(p, state);
       
-      // Icons basierend auf Beziehungstyp
-      let statusIcon = p.isAlive ? "❤️" : "💀";
-      if (p.id === player.partnerId) statusIcon = p.maritalStatus ? "💍" : "💘";
-      
-      const barLength = 5;
-      const filled = Math.round((p.relationship / 100) * barLength);
-      const bar = "🟢".repeat(filled) + "⚪".repeat(barLength - filled);
+      // Nur anzeigen, wenn es eine relevante Beziehung ist (Eltern, Partner, Kind oder Freund)
+      const isRelevant = id === player.motherId || 
+                         id === player.fatherId || 
+                         id === player.partnerId || 
+                         (player.childrenIds && player.childrenIds.includes(id)) ||
+                         (player.friendsIds && player.friendsIds.includes(id));
 
-      const romanceBar = p.romance > 0 ? `\n└ 🔥 Liebe: ${"❤️".repeat(Math.round(p.romance/20))}` : "";
+      if (isRelevant) {
+        let statusIcon = p.isAlive ? "❤️" : "💀";
+        if (p.id === player.partnerId) statusIcon = p.maritalStatus ? "💍" : "💘";
+        
+        const barLength = 5;
+        const relVal = p.relationship !== undefined ? p.relationship : 50;
+        const filled = Math.round((relVal / 100) * barLength);
+        const bar = "🟢".repeat(filled) + "⚪".repeat(barLength - filled);
 
-      text += `${statusIcon} *${p.name}*\n`;
-      text += `└ ${relation} | ${bar} ${p.relationship}%${romanceBar}\n\n`;
+        const romanceBar = (p.romance && p.romance > 0) ? `\n└ 🔥 Liebe: ${"❤️".repeat(Math.round(p.romance/20))}` : "";
 
-      if (p.isAlive) {
-        buttons.push([Markup.button.callback(`👉 Mit ${p.name} interagieren`, `interact_${id}`)]);
+        text += `${statusIcon} *${p.name}*\n`;
+        text += `└ ${relation} | ${bar} ${relVal}%${romanceBar}\n\n`;
+
+        if (p.isAlive) {
+          buttons.push([Markup.button.callback(`👉 Mit ${p.name} interagieren`, `interact_${id}`)]);
+        }
       }
     });
+
+    if (buttons.length === 0) text += "_Noch keine engen Kontakte._\n\n";
 
     buttons.push([Markup.button.callback('⬅️ Zurück zum Hauptmenü', 'main_menu')]);
 
