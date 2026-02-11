@@ -65,6 +65,23 @@ const getMainKeys = (state) => {
   return Markup.inlineKeyboard(rows);
 };
 
+// --- HOCHZEITS-FINALYSER ---
+
+function finalizeMarriage(state, newLastName) {
+  const player = state.persons[state.current_id];
+  const partner = state.persons[state.pendingPartnerId];
+  state.familyLastName = newLastName;
+  player.name = player.name.split(' ')[0] + " " + newLastName;
+  partner.name = partner.name.split(' ')[0] + " " + newLastName;
+  player.maritalStatus = `💍 Verheiratet mit ${partner.name}`;
+  partner.maritalStatus = `💍 Verheiratet mit ${player.name}`;
+  player.partnerId = partner.id;
+  partner.partnerId = player.id;
+  state.diary.push(`💍 Hochzeit! Die Familie trägt nun den Namen ${newLastName}.`);
+  state.setupStep = 'done';
+  state.pendingPartnerId = null;
+}
+
 // --- HANDLERS ---
 
 bot.start(async (ctx) => {
@@ -108,7 +125,6 @@ bot.action('age_up', async (ctx) => {
   const result = Engine.nextYear(state);
   const p = state.persons[state.current_id];
 
-  // Spezial-Check: Geburt erfordert Namenseingabe
   if (result.type === 'birth') {
     state.setupStep = 'naming_baby';
     state.pendingBabyId = result.babyId;
@@ -130,7 +146,27 @@ bot.action('age_up', async (ctx) => {
   await sendUpdate(ctx, state, text, keys);
 });
 
-// --- ROMANTIK & SOCIAL HANDLER ---
+// --- SOCIAL HANDLER ---
+
+bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const npcId = ctx.match[1];
+  const npc = state.persons[npcId];
+  const p = state.persons[state.current_id];
+  
+  const successChance = (npc.relationship || 0) / 100;
+  if (Math.random() < successChance) {
+    const amount = Math.floor(Math.random() * 50) + 10;
+    p.money += amount;
+    npc.relationship = Math.max(0, npc.relationship - 5);
+    await ctx.answerCbQuery(`💰 Erfolg! ${npc.name} hat dir ${amount}€ gegeben.`, { show_alert: true });
+  } else {
+    npc.relationship = Math.max(0, npc.relationship - 10);
+    await ctx.answerCbQuery(`❌ Abgelehnt! ${npc.name} wollte dir kein Geld geben.`, { show_alert: true });
+  }
+  const { text, keyboard } = Render.relationships(state);
+  await sendUpdate(ctx, state, text, keyboard);
+});
 
 bot.action(/^act_ask_rel_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -140,13 +176,52 @@ bot.action(/^act_ask_rel_(.*)$/, async (ctx) => {
   await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
 });
 
+bot.action(/^act_marry_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const npcId = ctx.match[1];
+  const result = Engine.attemptMarriage(state, npcId);
+
+  if (result.success) {
+    const npc = state.persons[npcId];
+    state.setupStep = 'choosing_family_name';
+    state.pendingPartnerId = npcId;
+    await writeSave(ctx.from.id, state);
+
+    const keys = Markup.inlineKeyboard([
+      [Markup.button.callback(`🏠 Name: ${state.familyLastName}`, `set_famname_player`)],
+      [Markup.button.callback(`🏡 Name: ${npc.name.split(' ').pop()}`, `set_famname_npc`)],
+      [Markup.button.callback('⌨️ Eigener Name', 'set_famname_custom')]
+    ]);
+    await ctx.answerCbQuery("💍 Antrag angenommen!", { show_alert: true });
+    return sendUpdate(ctx, state, "🥂 *Hochzeit!*\nWelchen Nachnamen soll die Familie ab jetzt tragen?", keys);
+  } else {
+    const alertMsg = result.reason === 'low_relationship' ? "⚠️ Beziehung muss 100% sein!" : "💔 Antrag abgelehnt...";
+    await ctx.answerCbQuery(alertMsg, { show_alert: true });
+  }
+});
+
+bot.action(/^set_famname_(.*)$/, async (ctx) => {
+  const state = await readSave(ctx.from.id);
+  const type = ctx.match[1];
+  const partner = state.persons[state.pendingPartnerId];
+  const player = state.persons[state.current_id];
+
+  if (type === 'custom') {
+    state.setupStep = 'typing_custom_famname';
+    await writeSave(ctx.from.id, state);
+    return ctx.reply("Wie soll der neue Familienname lauten?");
+  }
+
+  let newLastName = type === 'player' ? state.familyLastName : partner.name.split(' ').pop();
+  finalizeMarriage(state, newLastName);
+  await ctx.answerCbQuery("💍 Frisch verheiratet!");
+  await sendUpdate(ctx, state, Render.status(player, state), getMainKeys(state));
+});
+
 bot.action(/^act_sex_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   const npcId = ctx.match[1];
   const p = state.persons[state.current_id];
-  const npc = state.persons[npcId];
-  
-  // Einfache Schwangerschaftschance
   const chance = p.gender === 'W' ? 0.25 : 0.15;
   if (Math.random() < chance) {
     p.isPregnant = true;
@@ -174,6 +249,9 @@ bot.action(/^interact_(.*)$/, async (ctx) => {
   if (isParent) {
     buttons.push([Markup.button.callback('💰 Nach Geld fragen', `act_askmoney_${npcId}`)]);
   } else if (p.age >= 16) {
+    if (isPartner && npc.relationship === 100) {
+      buttons.push([Markup.button.callback('💍 Heiraten', `act_marry_${npcId}`)]);
+    }
     if (isPartner) {
       buttons.push([Markup.button.callback('🔞 Sex haben', `act_sex_${npcId}`)]);
     } else if (npc.relationship >= 80) {
@@ -185,13 +263,19 @@ bot.action(/^interact_(.*)$/, async (ctx) => {
   await sendUpdate(ctx, state, text, Markup.inlineKeyboard(buttons));
 });
 
-// --- TEXT HANDLER FÜR NAMEN ---
+// --- TEXT HANDLER ---
 
 bot.on('text', async (ctx) => {
   const state = await readSave(ctx.from.id);
   if (!state) return;
 
-  // Babynamen verarbeiten
+  if (state.setupStep === 'typing_custom_famname') {
+    finalizeMarriage(state, ctx.message.text.trim());
+    await bulkDelete(ctx, ctx.message.message_id, 2);
+    await ctx.reply(`💍 Neuer Familienname: ${state.familyLastName}`);
+    return sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
+  }
+
   if (state.setupStep === 'naming_baby' && state.pendingBabyId) {
     const babyName = ctx.message.text.trim();
     const baby = state.persons[state.pendingBabyId];
@@ -203,7 +287,6 @@ bot.on('text', async (ctx) => {
     return sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
   }
 
-  // Charaktererstellung
   if (!state.setupComplete && state.setupStep === 'name') {
     const input = ctx.message.text.trim();
     if (input.split(' ').length < 2) return ctx.reply("❌ Bitte Vor- & Nachname.");
@@ -215,7 +298,7 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// --- NAVIGATION & DEFAULT HANDLERS ---
+// --- NAVIGATION & SYSTEM ---
 
 bot.action('rel', async (ctx) => {
   const state = await readSave(ctx.from.id);
@@ -311,4 +394,4 @@ bot.action('diary', async (ctx) => {
 });
 
 bot.on('callback_query', (ctx) => ctx.answerCbQuery());
-bot.launch().then(() => console.log("ValueLifeSim v0.0.3i online!"));
+bot.launch().then(() => console.log(`ValueLifeSim v${config.version} online!`));
