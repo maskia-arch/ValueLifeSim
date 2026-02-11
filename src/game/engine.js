@@ -107,7 +107,6 @@ class Engine {
 
     if (birthEvent) return { ...birthEvent, npcDeaths };
 
-    // --- 3. Event Check ---
     if (Math.random() < 0.25) {
       try {
         const eventsPath = path.join(process.cwd(), 'data/events.json');
@@ -148,26 +147,20 @@ class Engine {
     return npc;
   }
 
-  // --- NEU: BEZIEHUNGS-LOGIK (Trigger bei 80% Beziehung) ---
   static attemptRelationship(state, npcId) {
     const player = state.persons[state.current_id];
     const npc = state.persons[npcId];
     if (!npc) return { success: false };
 
-    // Verwandtschaftsprüfung (Sicherheitsebene in der Engine)
     const isParent = (npcId === player.motherId || npcId === player.fatherId);
     if (isParent) return { success: false, reason: 'family' };
 
-    // Erfolgswahrscheinlichkeit basiert auf dem Beziehungslevel
     const chance = npc.relationship / 100;
     const success = Math.random() < chance;
 
     if (success) {
       player.partnerId = npcId;
       npc.partnerId = state.current_id;
-      
-      // Marital Status für das UI Profil setzen
-      const partnerLabel = npc.gender === 'W' ? "Partnerin" : "Partner";
       player.maritalStatus = `In einer Beziehung mit ${npc.name}`;
       npc.maritalStatus = `In einer Beziehung mit ${player.name}`;
       
@@ -183,12 +176,34 @@ class Engine {
     }
   }
 
+  // --- NEU: HOCHZEITS-LOGIK ---
+  static attemptMarriage(state, npcId) {
+    const player = state.persons[state.current_id];
+    const npc = state.persons[npcId];
+    
+    // Bedingung: Muss aktueller Partner sein und 100% Beziehung
+    if (!npc || player.partnerId !== npcId || npc.relationship < 100) {
+      return { success: false, reason: 'low_relationship' };
+    }
+
+    // 98% Erfolg bei 100% Beziehung
+    const success = Math.random() < 0.98;
+
+    if (success) {
+      // Erfolg wird zurückgegeben, die finale Namenswahl triggert in bot.js
+      return { success: true };
+    } else {
+      npc.relationship = Math.max(0, npc.relationship - 30);
+      state.diary.push(`💔 Alter ${player.age}: Schock! ${npc.name} hat deinen Heiratsantrag abgelehnt.`);
+      return { success: false, reason: 'rejected' };
+    }
+  }
+
   static attemptOneNightStand(state, npcId) {
     const player = state.persons[state.current_id];
     const npc = state.persons[npcId];
     if (!npc) return { success: false };
     
-    // Chance basiert auf Looks des Spielers, Heat (Bekanntheit) und Zufall
     const chance = (player.looks / 100) * 0.4 + (player.heat / 100) * 0.2 + 0.2;
     const success = Math.random() < chance;
 
