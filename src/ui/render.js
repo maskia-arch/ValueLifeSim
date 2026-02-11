@@ -11,7 +11,7 @@ class Render {
       "Turkey": { code: "tr-TR", symbol: "₺" },
       "Japan": { code: "ja-JP", symbol: "¥" }
     };
-    const conf = localeMap[country] || { code: "en-US", symbol: "$" };
+    const conf = localeMap[country] || { code: "de-DE", symbol: "€" };
     const formattedNumber = new Intl.NumberFormat(conf.code).format(amount || 0);
     return country === "USA" ? `${conf.symbol}${formattedNumber}` : `${formattedNumber} ${conf.symbol}`;
   }
@@ -35,8 +35,9 @@ class Render {
     const sexualityIcons = { 'hetero': '👫 Hetero', 'homo': '👬 Homo', 'bi': '🌍 Bi' };
     const sexualityText = (p.age >= 16 && p.hasSetSexuality) ? `🌈 *Orientierung:* ${sexualityIcons[p.sexuality] || p.sexuality}\n` : "";
 
-    return `✨ *ValueLifeSim v${config.version}*\n` +
-           `${lifeStatus}👤 *Name:* ${p.name}\n🎂 *Alter:* ${p.age}\n` +
+    return `✨ *ValueLifeSim v${config.version}* | 👤 Name: ${p.name}\n` +
+           `________________________________\n\n` +
+           `${lifeStatus}🎂 *Alter:* ${p.age}\n` +
            `${flag} *Land:* ${countryDisplayName}\n${maritalText}${pregnancyText}${sexualityText}` +
            `💰 *Bank:* ${this.formatMoney(p.money, state.country)}\n\n` +
            `🏥 *Gesundheit:* ${p.health}%\n😊 *Glück:* ${p.happiness}%\n` +
@@ -47,35 +48,41 @@ class Render {
     const genderIcon = npc.gender === 'W' ? '👩' : '👨';
     return `📱 *Finder - Profil*\n________________________________\n\n` +
            `${genderIcon} *Name:* ${npc.name}\n🎂 *Alter:* ${npc.age}\n` +
-           `✨ *Looks:* ${npc.looks || 0}%\n❤️ *Basis-Interesse:* ${npc.relationship || 0}%\n\n` +
+           `✨ *Looks:* ${npc.looks || 0}%\n❤️ *Interesse:* ${npc.relationship || 0}%\n\n` +
            `_„Bereit für ein Abenteuer?“_`;
   }
 
   /**
-   * Beziehungsliste mit Sortierung v0.0.2g
+   * Beziehungsliste mit hierarchischer Sortierung (v0.0.3)
    */
   static relationships(state) {
     if (!state || !state.persons) return { text: "Keine Beziehungen.", keyboard: null };
     const player = state.persons[state.current_id];
-    let text = `👥 *Beziehungen & Familie (v${config.version})*\n\n`;
+    let text = `👥 *Beziehungen & Familie*\n________________________________\n\n`;
     
-    // Sortier-Gewichtung definieren
     const getRank = (npc, id) => {
-      if (id === player.motherId || id === player.fatherId) return 2; // Eltern
-      if (id === player.partnerId) return 3; // Partner
-      if (player.childrenIds && player.childrenIds.includes(id)) return 4; // Kinder
-      if (player.friendsIds && player.friendsIds.includes(id)) return 6; // Freunde
-      
-      // Check für Großeltern (Eltern der Eltern)
-      const mother = state.persons[player.motherId];
-      const father = state.persons[player.fatherId];
-      if ((mother && (id === mother.motherId || id === mother.fatherId)) || 
-          (father && (id === father.motherId || id === father.fatherId))) return 1;
+      // 1. Großeltern (Eltern der Eltern)
+      const m = state.persons[player.motherId];
+      const f = state.persons[player.fatherId];
+      if ((m && (id === m.motherId || id === m.fatherId)) || 
+          (f && (id === f.motherId || id === f.fatherId))) return 1;
 
-      // Check für Geschwister (Gleiche Eltern, aber nicht ich selbst)
+      // 2. Eltern
+      if (id === player.motherId || id === player.fatherId) return 2;
+
+      // 3. Partner
+      if (id === player.partnerId) return 3;
+
+      // 4. Kinder
+      if (player.childrenIds && player.childrenIds.includes(id)) return 4;
+
+      // 5. Geschwister
       if ((npc.motherId === player.motherId || npc.fatherId === player.fatherId) && id !== state.current_id) return 5;
 
-      return 7; // Bekannte/Sonstige
+      // 6. Freunde
+      if (player.friendsIds && player.friendsIds.includes(id)) return 6;
+
+      return 7; // Sonstige
     };
 
     const personIds = Object.keys(state.persons)
@@ -86,39 +93,41 @@ class Render {
     personIds.forEach(id => {
       const p = state.persons[id];
       const relation = this.getRelationLabel(p, state);
+      
+      // Nur relevante Personen anzeigen
       const isRelevant = id === player.motherId || id === player.fatherId || id === player.partnerId || 
                          (player.childrenIds && player.childrenIds.includes(id)) || 
-                         (player.friendsIds && player.friendsIds.includes(id)) || p.relationship > 15;
+                         (player.friendsIds && player.friendsIds.includes(id)) || p.relationship > 10;
 
       if (isRelevant) {
-        let statusIcon = p.isAlive ? "❤️" : "💀";
-        if (id === player.partnerId) statusIcon = "💍";
-        
+        const statusIcon = p.isAlive ? (id === player.partnerId ? "💍" : "❤️") : "💀";
         const filled = Math.round(((p.relationship || 50) / 100) * 5);
         const bar = "🟢".repeat(filled) + "⚪".repeat(5 - filled);
-        const romanceBar = (p.romance && p.romance > 0) ? `\n└ 🔥 Liebe: ${"❤️".repeat(Math.round(p.romance/20))}` : "";
+        const romance = (p.romance > 10) ? ` | 🔥 ${p.romance}%` : "";
 
-        text += `${statusIcon} *${p.name}*\n└ ${relation} | ${bar} ${p.relationship || 50}%${romanceBar}\n\n`;
-        if (p.isAlive) buttons.push([Markup.button.callback(`👉 Mit ${p.name} interagieren`, `interact_${id}`)]);
+        text += `${statusIcon} *${p.name}*\n└ ${relation} | ${bar} ${p.relationship}%${romance}\n\n`;
+        
+        if (p.isAlive) {
+          buttons.push([Markup.button.callback(`👉 Mit ${p.name} interagieren`, `interact_${id}`)]);
+        }
       }
     });
 
-    buttons.push([Markup.button.callback('⬅️ Zurück', 'main_menu')]);
+    buttons.push([Markup.button.callback('⬅️ Zurück zum Hauptmenü', 'main_menu')]);
     return { text, keyboard: Markup.inlineKeyboard(buttons) };
   }
 
   static getRelationLabel(p, state) {
     const player = state.persons[state.current_id];
     const id = p.id;
-    if (id === player.partnerId) return player.gender === 'W' ? "Ehemann/Partner" : "Ehefrau/Partnerin";
+    if (id === player.partnerId) return player.gender === 'W' ? "Partner" : "Partnerin";
     if (id === player.motherId) return "Mutter";
     if (id === player.fatherId) return "Vater";
     
-    // Großeltern-Logik
     const m = state.persons[player.motherId];
     const f = state.persons[player.fatherId];
-    if (m && (id === m.motherId || id === m.fatherId)) return "Großelternteil";
-    if (f && (id === f.motherId || id === f.fatherId)) return "Großelternteil";
+    if (m && (id === m.motherId || id === m.fatherId)) return "Großeltern";
+    if (f && (id === f.motherId || id === f.fatherId)) return "Großeltern";
 
     if (player.childrenIds && player.childrenIds.includes(id)) return "Kind";
     if ((p.motherId === player.motherId || p.fatherId === player.fatherId) && id !== state.current_id) return "Geschwister";
@@ -131,14 +140,15 @@ class Render {
     let text = `🌳 *Stammbaum*\n________________________________\n\n`;
     Object.values(state.persons).sort((a, b) => b.age - a.age).forEach(p => {
       const relation = this.getRelationLabel(p, state);
-      text += `${p.isAlive ? '🟢' : '⚫️'} *${p.name}* (${p.age} J.)${p.id === state.current_id ? " ⭐" : ""}\n└─ ${relation}\n\n`;
+      const icon = p.isAlive ? (p.id === state.current_id ? '⭐' : '🟢') : '⚫️';
+      text += `${icon} *${p.name}* (${p.age} J.)\n└─ ${relation}\n\n`;
     });
     return text;
   }
 
   static diary(state) {
     let text = "📖 *Lebenschronik*\n________________________________\n\n";
-    if (!state.diary || state.diary.length === 0) return text + "_Tagebuch leer._";
+    if (!state.diary || state.diary.length === 0) return text + "_Noch keine Einträge vorhanden._";
     [...state.diary].reverse().slice(0, 15).forEach(e => { text += `• ${e}\n`; });
     return text;
   }
