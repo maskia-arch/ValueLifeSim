@@ -48,7 +48,7 @@ function finalizeParentsCulture(state, country) {
 }
 
 /**
- * Erstellt eine Person mit erweiterten v0.0.2e Attributen.
+ * Erstellt eine Person mit erweiterten Attributen.
  */
 function createPerson(name, gender = null, country = 'germany', parents = { m: null, f: null }, inherited = 0) {
   return {
@@ -60,11 +60,11 @@ function createPerson(name, gender = null, country = 'germany', parents = { m: n
     health: 100,
     happiness: 100,
     smarts: Math.floor(Math.random() * 101),
-    looks: Math.floor(Math.random() * 101), // Wichtig für Finder-Dating
-    heat: 0,                                // Bekanntheit/Attraktivität
+    looks: Math.floor(Math.random() * 101),
+    heat: 0,                                
     reputation: 50,
     relationship: 80, 
-    romance: 0,                             // NEU: Basis für romantische Level
+    romance: 0,                             
     isAlive: true,
     motherId: parents.m,
     fatherId: parents.f,
@@ -79,7 +79,7 @@ function createPerson(name, gender = null, country = 'germany', parents = { m: n
 }
 
 /**
- * Initialisiert den globalen Spielzustand.
+ * Initialisiert den globalen Spielzustand für v0.0.3.
  */
 function initGameState(userId) {
   const mother = createPerson(null, "W");
@@ -93,7 +93,7 @@ function initGameState(userId) {
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.2e", 
+    schema_version: "0.0.3", // Update der Version
     setupComplete: false,
     setupStep: 'name',
     country: null, 
@@ -103,6 +103,7 @@ function initGameState(userId) {
     isGameOver: false,
     diary: [],
     lastMessageId: null,
+    pinMessageId: null,      // NEU: Hält die ID der angehefteten Statusnachricht
     persons: { 
       [p.id]: p,
       [mother.id]: mother,

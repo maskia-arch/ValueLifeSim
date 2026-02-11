@@ -14,38 +14,52 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 async function isMessageValid(ctx, state) {
   if (!state.setupComplete) return true; 
   const currentMsgId = ctx.callbackQuery?.message?.message_id;
-  if (state.lastMessageId && currentMsgId !== state.lastMessageId) {
-    await ctx.answerCbQuery("⚠️ Diese Nachricht ist veraltet.", { show_alert: true });
+  if (state.pinMessageId && currentMsgId !== state.pinMessageId) {
+    await ctx.answerCbQuery("⚠️ Bitte nutze das angeheftete Menü oben.", { show_alert: true });
     return false;
   }
   return true;
 }
 
-/**
- * Löscht eine definierte Anzahl an Nachrichten rückwirkend ab einer ID
- */
 async function bulkDelete(ctx, startId, count = 20) {
   const userId = ctx.from.id;
   for (let i = 0; i < count; i++) {
     try {
       await ctx.telegram.deleteMessage(userId, startId - i);
+    } catch (err) {}
+  }
+}
+
+/**
+ * Aktualisiert den angehefteten Status oder sendet/pinnt ihn neu
+ */
+async function sendUpdate(ctx, state, text, keyboard) {
+  const userId = ctx.from.id;
+
+  if (state.pinMessageId) {
+    try {
+      await ctx.telegram.editMessageText(userId, state.pinMessageId, null, text, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard.reply_markup
+      });
+      await writeSave(userId, state);
+      return;
     } catch (err) {
-      // Ignoriere Fehler (z.B. Nachricht zu alt oder bereits gelöscht)
+      // Falls Edit fehlschlägt (z.B. Nachricht gelöscht), im Code fortfahren und neu senden
     }
   }
-}
 
-async function clearChat(ctx, state) {
-  if (state.lastMessageId) {
-    try { await ctx.telegram.deleteMessage(ctx.from.id, state.lastMessageId); } catch (err) {}
-  }
-}
-
-async function sendUpdate(ctx, state, text, keyboard) {
-  await clearChat(ctx, state);
   const msg = await ctx.replyWithMarkdown(text, keyboard);
   state.lastMessageId = msg.message_id;
-  await writeSave(ctx.from.id, state);
+
+  if (state.setupComplete && !state.pinMessageId) {
+    state.pinMessageId = msg.message_id;
+    try {
+      await ctx.telegram.pinChatMessage(userId, msg.message_id);
+    } catch (e) {}
+  }
+  
+  await writeSave(userId, state);
 }
 
 const getMainKeys = (state) => {
@@ -53,14 +67,10 @@ const getMainKeys = (state) => {
   const p = state.persons[state.current_id];
   const rows = [
     [Markup.button.callback('➕ Ein Jahr älter', 'age_up')],
-    [Markup.button.callback('📊 Status', 'status'), Markup.button.callback('👥 Beziehungen', 'rel')]
+    [Markup.button.callback('👥 Beziehungen', 'rel'), Markup.button.callback('🎡 Aktivitäten', 'activities')]
   ];
-  if (p.age >= 16) {
-    rows.push([Markup.button.callback('🎡 Aktivitäten', 'activities'), Markup.button.callback('📖 Tagebuch', 'diary')]);
-  } else {
-    rows.push([Markup.button.callback('📖 Tagebuch', 'diary')]);
-  }
-  rows.push([Markup.button.callback('🌳 Stammbaum', 'tree'), Markup.button.callback('⚙️ Reset', 'reset')]);
+  rows.push([Markup.button.callback('📖 Tagebuch', 'diary'), Markup.button.callback('🌳 Stammbaum', 'tree')]);
+  rows.push([Markup.button.callback('⚙️ Reset', 'reset')]);
   return Markup.inlineKeyboard(rows);
 };
 
@@ -90,15 +100,14 @@ async function runSetup(ctx, state) {
     return ctx.reply("In welchem Land wirst du geboren?", Markup.inlineKeyboard(countryButtons));
   }
   
-  // --- SETUP ABSCHLUSS: CHAT REINIGEN ---
   state.setupComplete = true;
   state.diary.push(`🌟 Du wurdest als ${p.name} in ${state.country} geboren.`);
   
-  // Lösche die letzten 15 Nachrichten-IDs (Setup-Prozess)
   const currentMsgId = ctx.callbackQuery?.message?.message_id || state.lastMessageId;
   await bulkDelete(ctx, currentMsgId, 15);
   
-  await sendUpdate(ctx, state, `✨ *Das Abenteuer beginnt!*\n\nDu wurdest in ${state.country} geboren.`, getMainKeys(state));
+  // Erste Statusnachricht senden, die dann gepinnt wird
+  await sendUpdate(ctx, state, Render.status(p, state), getMainKeys(state));
 }
 
 // --- COMMANDS ---
@@ -108,8 +117,6 @@ bot.start(async (ctx) => {
   await writeSave(ctx.from.id, state);
   return runSetup(ctx, state);
 });
-
-// --- TEXT HANDLER ---
 
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
@@ -122,7 +129,7 @@ bot.on('text', async (ctx) => {
     state.familyLastName = input.split(' ').pop();
     state.persons[state.current_id].name = input;
     state.setupStep = 'gender';
-    state.lastMessageId = ctx.message.message_id; // Merken zum späteren Löschen
+    state.lastMessageId = ctx.message.message_id;
     await writeSave(userId, state);
     return runSetup(ctx, state);
   }
@@ -147,88 +154,72 @@ bot.action('age_up', async (ctx) => {
     ]));
   }
 
-  let msgText = `Du bist jetzt ${p.age} Jahre alt.`;
-  let keys = getMainKeys(state);
+  let msgText = Render.status(p, state);
   if (result.type === 'event') {
     msgText = `*Ereignis!*\n\n${result.data.text}`;
-    keys = Markup.inlineKeyboard(result.data.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)]));
+    const keys = Markup.inlineKeyboard(result.data.choices.map((c, i) => [Markup.button.callback(c.text, `choice_${result.data.id}_${i}`)]));
+    return sendUpdate(ctx, state, msgText, keys);
   }
-  await sendUpdate(ctx, state, msgText, keys);
+  
+  await sendUpdate(ctx, state, msgText, getMainKeys(state));
 });
 
-// --- INTERAKTIONS-HANDLER ---
-
-bot.action(/^act_talk_(.*)$/, async (ctx) => {
+bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
+  const [_, eventId, choiceIdx] = ctx.match;
   const state = await readSave(ctx.from.id);
-  const npc = state.persons[ctx.match[1]];
-  npc.relationship = Math.min(100, (npc.relationship || 0) + 5);
-  await ctx.answerCbQuery("💬 Gutes Gespräch!");
-  await sendUpdate(ctx, state, `Du hast dich gut mit ${npc.name} unterhalten.`, getMainKeys(state));
+  if (!await isMessageValid(ctx, state)) return;
+
+  const events = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/events.json'), 'utf8'));
+  const event = events.find(e => e.id === eventId);
+  const choice = event.choices[parseInt(choiceIdx)];
+  Engine.processChoice(state, choice);
+  
+  await ctx.answerCbQuery();
+  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
 });
 
-bot.action(/^act_gift_(.*)$/, async (ctx) => {
+// --- NAVIGATION & INTERAKTION ---
+
+bot.action('rel', async (ctx) => {
   const state = await readSave(ctx.from.id);
-  const p = state.persons[state.current_id];
-  const npc = state.persons[ctx.match[1]];
-  if (p.money < 20) return ctx.answerCbQuery("⚠️ Zu wenig Geld!", { show_alert: true });
-  p.money -= 20;
-  npc.relationship = Math.min(100, (npc.relationship || 0) + 15);
-  await sendUpdate(ctx, state, `Du hast ${npc.name} ein Geschenk gekauft (+15% Beziehung).`, getMainKeys(state));
+  if (!await isMessageValid(ctx, state)) return;
+  const { text, keyboard } = Render.relationships(state);
+  await sendUpdate(ctx, state, text, keyboard);
 });
 
-bot.action(/^act_askmoney_(.*)$/, async (ctx) => {
+bot.action('activities', async (ctx) => {
   const state = await readSave(ctx.from.id);
-  const npc = state.persons[ctx.match[1]];
-  const p = state.persons[state.current_id];
-  if (Math.random() < (npc.relationship / 100)) {
-    const amount = Math.floor(Math.random() * 30) + 10;
-    p.money += amount;
-    npc.relationship = Math.max(0, npc.relationship - 5);
-    await ctx.answerCbQuery(`✅ Erfolg! +${amount}€`);
-    await sendUpdate(ctx, state, `${npc.name} hat dir ${amount}€ gegeben.`, getMainKeys(state));
-  } else {
-    npc.relationship = Math.max(0, npc.relationship - 10);
-    await ctx.answerCbQuery("❌ Abgelehnt.", { show_alert: true });
-    await sendUpdate(ctx, state, `${npc.name} wollte dir kein Geld geben.`, getMainKeys(state));
-  }
+  if (!await isMessageValid(ctx, state)) return;
+  const text = "🎡 *Aktivitäten*";
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('💃 Disco (100€)', 'act_disco'), Markup.button.callback('📱 Finder', 'act_finder')],
+    [Markup.button.callback('⬅️ Zurück', 'main_menu')]
+  ]);
+  await sendUpdate(ctx, state, text, keyboard);
 });
 
-bot.action(/^interact_(.*)$/, async (ctx) => {
+bot.action('main_menu', async (ctx) => {
   const state = await readSave(ctx.from.id);
-  const npcId = ctx.match[1];
-  const npc = state.persons[npcId];
-  const p = state.persons[state.current_id];
-  const isParent = (npcId === p.motherId || npcId === p.fatherId);
-  const isPartner = (npcId === p.partnerId);
-  let text = `👥 *Interaktion mit ${npc.name}*\nBeziehung: ${npc.relationship}%`;
-  const buttons = [[Markup.button.callback('💬 Reden', `act_talk_${npcId}`), Markup.button.callback('🎁 Geschenk', `act_gift_${npcId}`)]];
-  if (isParent) buttons.push([Markup.button.callback('💰 Nach Geld fragen', `act_askmoney_${npcId}`)]);
-  buttons.push([Markup.button.callback('⬅️ Zurück', 'rel')]);
-  await sendUpdate(ctx, state, text, Markup.inlineKeyboard(buttons));
+  if (!await isMessageValid(ctx, state)) return;
+  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
 });
-
-// --- NAVIGATION & SYSTEM ---
 
 bot.action('reset', async (ctx) => {
   const userId = ctx.from.id;
   const state = await readSave(userId);
-  const lastId = ctx.callbackQuery?.message?.message_id || state?.lastMessageId;
-  if (lastId) await bulkDelete(ctx, lastId, 35);
+  
+  if (state && state.pinMessageId) {
+    try {
+      await ctx.telegram.unpinChatMessage(userId, { message_id: state.pinMessageId });
+      await ctx.telegram.deleteMessage(userId, state.pinMessageId);
+    } catch (e) {}
+  }
+  
+  await bulkDelete(ctx, ctx.callbackQuery.message.message_id, 35);
   const newState = initGameState(userId);
   await writeSave(userId, newState);
   await ctx.answerCbQuery("Reset...");
   return runSetup(ctx, newState);
-});
-
-bot.action('status', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
-});
-
-bot.action('rel', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  const { text, keyboard } = Render.relationships(state);
-  await sendUpdate(ctx, state, text, keyboard);
 });
 
 bot.action(/set_country_(.*)/, async (ctx) => {
@@ -244,22 +235,6 @@ bot.action(/set_gender_(.*)/, async (ctx) => {
   state.persons[state.current_id].gender = ctx.match[1].includes('M') ? 'M' : 'W';
   await ctx.answerCbQuery();
   return runSetup(ctx, state);
-});
-
-// Verbleibende Standard-Navigation
-bot.action('main_menu', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  await sendUpdate(ctx, state, Render.status(state.persons[state.current_id], state), getMainKeys(state));
-});
-
-bot.action('tree', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  await sendUpdate(ctx, state, Render.tree(state), getMainKeys(state));
-});
-
-bot.action('diary', async (ctx) => {
-  const state = await readSave(ctx.from.id);
-  await sendUpdate(ctx, state, Render.diary(state), getMainKeys(state));
 });
 
 bot.on('callback_query', async (ctx) => { await ctx.answerCbQuery(); });
