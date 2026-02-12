@@ -1,5 +1,5 @@
+// src/ui/render.js
 const config = require('../config');
-const { Markup } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
 
@@ -51,91 +51,6 @@ class Render {
            `${genderIcon} *Name:* ${npc.name}\n🎂 *Alter:* ${npc.age}\n` +
            `✨ *Looks:* ${npc.looks || 0}%\n❤️ *Interesse:* ${npc.relationship || 0}%\n\n` +
            `_„Bereit für ein Abenteuer?“_`;
-  }
-
-  static relationships(state) {
-    if (!state || !state.persons) return { text: "Keine Beziehungen.", keyboard: null };
-    const player = state.persons[state.current_id];
-    let text = `👥 *Beziehungen & Familie*\n________________________________\n\n`;
-    
-    const getRank = (npc, id) => {
-      const m = state.persons[player.motherId];
-      const f = state.persons[player.fatherId];
-      if ((m && (id === m.motherId || id === m.fatherId)) || 
-          (f && (id === f.motherId || id === f.fatherId))) return 1;
-      if (id === player.motherId || id === player.fatherId) return 2;
-      if (id === player.partnerId) return 3;
-      if (player.childrenIds && player.childrenIds.includes(id)) return 4;
-      if ((npc.motherId === player.motherId || npc.fatherId === player.fatherId) && id !== state.current_id) return 5;
-      if (player.friendsIds && player.friendsIds.includes(id)) return 6;
-      return 7;
-    };
-
-    const personIds = Object.keys(state.persons)
-      .filter(id => id !== state.current_id)
-      .sort((a, b) => getRank(state.persons[a], a) - getRank(state.persons[b], b));
-
-    const buttons = [];
-    personIds.forEach(id => {
-      const p = state.persons[id];
-      const relation = this.getRelationLabel(p, state);
-      const isRelevant = id === player.motherId || id === player.fatherId || id === player.partnerId || 
-                         (player.childrenIds && player.childrenIds.includes(id)) || 
-                         (player.friendsIds && player.friendsIds.includes(id)) || p.relationship > 10;
-
-      if (isRelevant) {
-        const statusIcon = p.isAlive ? (id === player.partnerId ? "💍" : "❤️") : "💀";
-        const filled = Math.round(((p.relationship || 50) / 100) * 5);
-        const bar = "🟢".repeat(filled) + "⚪".repeat(5 - filled);
-        const romance = (p.romance && p.romance > 10) ? ` | 🔥 ${p.romance}%` : "";
-
-        text += `${statusIcon} *${p.name}*\n└ ${relation} | ${bar} ${p.relationship}%${romance}\n\n`;
-        
-        if (p.isAlive) {
-          buttons.push([Markup.button.callback(`👉 Mit ${p.name} interagieren`, `interact_${id}`)]);
-        }
-      }
-    });
-
-    buttons.push([Markup.button.callback('⬅️ Zurück zum Hauptmenü', 'main_menu')]);
-    return { text, keyboard: Markup.inlineKeyboard(buttons) };
-  }
-
-  static getRelationLabel(p, state) {
-    const player = state.persons[state.current_id];
-    const id = p.id;
-    if (id === player.partnerId) return player.gender === 'W' ? "Partner" : "Partnerin";
-    if (id === player.motherId) return "Mutter";
-    if (id === player.fatherId) return "Vater";
-    
-    const m = state.persons[player.motherId];
-    const f = state.persons[player.fatherId];
-    if (m && (id === m.motherId || id === m.fatherId)) return "Großeltern";
-    if (f && (id === f.motherId || id === f.fatherId)) return "Großeltern";
-
-    if (player.childrenIds && player.childrenIds.includes(id)) return "Kind";
-    if ((p.motherId === player.motherId || p.fatherId === player.fatherId) && id !== state.current_id) return "Geschwister";
-    if (player.friendsIds && player.friendsIds.includes(id)) return "Freund(in)";
-    
-    return "Bekannte(r)";
-  }
-
-  static tree(state) {
-    let text = `🌳 *Stammbaum*\n________________________________\n\n`;
-    Object.values(state.persons).sort((a, b) => b.age - a.age).forEach(p => {
-      const relation = this.getRelationLabel(p, state);
-      const icon = p.isAlive ? (p.id === state.current_id ? '⭐' : '🟢') : '⚫️';
-      text += `${icon} *${p.name}* (${p.age} J.)\n└─ ${relation}\n\n`;
-    });
-    return text;
-  }
-
-  static diary(state) {
-    let text = "📖 *Lebenschronik*\n________________________________\n\n";
-    if (!state.diary || state.diary.length === 0) return text + "_Noch keine Einträge vorhanden._";
-    // Zeigt die letzten 15 Einträge in umgekehrter Reihenfolge (neueste oben)
-    [...state.diary].reverse().slice(0, 15).forEach(e => { text += `• ${e}\n`; });
-    return text;
   }
 }
 
