@@ -5,16 +5,20 @@ const path = require('path');
 function getVersion() {
   try {
     const versionPath = path.join(process.cwd(), 'version.txt');
-    return fs.readFileSync(versionPath, 'utf8').trim();
+    if (fs.existsSync(versionPath)) {
+      return fs.readFileSync(versionPath, 'utf8').trim();
+    }
+    return '0.0.22'; // Manueller Fallback passend zum Update
   } catch (err) {
-    return '0.0.0'; // Fallback, falls Datei fehlt
+    return '0.0.22'; 
   }
 }
 
 module.exports = {
   token: process.env.BOT_TOKEN,
   url: process.env.PUBLIC_URL,
+  // Auf Render.com wird PORT automatisch zugewiesen (meist 10000)
   port: process.env.PORT || 3000,
   savePath: path.join(process.cwd(), 'saves'),
-  version: getVersion() // Hier wird die Variable für alle Files bereitgestellt
+  version: getVersion()
 };

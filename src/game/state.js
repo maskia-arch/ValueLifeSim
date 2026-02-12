@@ -4,9 +4,11 @@ const { v4: uuidv4 } = require('uuid');
 
 /**
  * Holt einen Namen basierend auf Geschlecht und Land.
+ * Nutzt einen stabilen absoluten Pfad für die JSON-Daten.
  */
 function getRandomName(gender, country = 'germany', forcedLastName = null) {
   try {
+    // Sicherer Pfad: Geht vom aktuellen Arbeitsverzeichnis aus
     const namesPath = path.join(process.cwd(), 'data/npc_names.json');
     const allData = JSON.parse(fs.readFileSync(namesPath, 'utf8'));
     
@@ -20,6 +22,7 @@ function getRandomName(gender, country = 'germany', forcedLastName = null) {
     
     return { full: `${firstName} ${lastName}`, last: lastName };
   } catch (err) {
+    // Fallback falls Datei fehlt oder Pfad im Deploy hakt
     const ln = forcedLastName || "Schmidt";
     return { full: (gender === 'W' ? "Julia" : "Lukas") + " " + ln, last: ln };
   }
@@ -40,7 +43,6 @@ function finalizeParentsCulture(state, country) {
   mother.name = mData.full;
   father.name = fData.full;
 
-  // Verknüpfung der Eltern als Partner
   mother.partnerId = father.id;
   father.partnerId = mother.id;
   mother.maritalStatus = `Verheiratet mit ${father.name}`;
@@ -48,7 +50,7 @@ function finalizeParentsCulture(state, country) {
 }
 
 /**
- * Erstellt eine Person mit erweiterten Attributen.
+ * Erstellt eine Person mit erweiterten Attributen für v0.0.22.
  */
 function createPerson(name, gender = null, country = 'germany', parents = { m: null, f: null }, inherited = 0) {
   return {
@@ -79,7 +81,7 @@ function createPerson(name, gender = null, country = 'germany', parents = { m: n
 }
 
 /**
- * Initialisiert den globalen Spielzustand für v0.0.3i.
+ * Initialisiert den globalen Spielzustand.
  */
 function initGameState(userId) {
   const mother = createPerson(null, "W");
@@ -93,14 +95,14 @@ function initGameState(userId) {
   p.fatherId = father.id;
 
   return {
-    schema_version: "0.0.3i", 
+    schema_version: "0.0.22", // Version aktualisiert
     setupComplete: false,
     setupStep: 'name',
     country: null, 
     familyLastName: null, 
     current_id: p.id,
     activeEventId: null,
-    pendingBabyId: null,     // NEU: Hält die ID des Babys während der Namenswahl
+    pendingBabyId: null,     
     isGameOver: false,
     diary: [],
     lastMessageId: null,

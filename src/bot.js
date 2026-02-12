@@ -2,19 +2,32 @@ const { Telegraf } = require('telegraf');
 const { readSave, writeSave } = require('./storage/save');
 const config = require('./config');
 
-// PFAD-KORREKTUREN: Mit ../ verlassen wir den src-Ordner, um auf die Handler zuzugreifen
+// PFAD-KORREKTUREN: Mit ../ verlassen wir den src-Ordner
 const SetupHandler = require('../handlers/setup');
 const ActionHandler = require('../handlers/action');
 const SocialHandler = require('../handlers/social');
 const NavigationHandler = require('../handlers/navigation');
-const Messenger = require('../utils/messenger'); // Utils liegt ebenfalls auf der Root-Ebene
+const Messenger = require('../utils/messenger'); 
 const Keyboards = require('./ui/keyboards');
 
+// Bot-Instanz initialisieren
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Hilfsfunktion für die Handler-Zentralisierung
 const getMainKeys = (state) => Keyboards.main(state);
 module.exports.getMainKeys = getMainKeys;
+
+// --- MIDDLEWARE ---
+// Diese Middleware sorgt dafür, dass Callback-Queries immer beantwortet werden,
+// was das "Lade-Icon" bei Buttons in Telegram entfernt.
+bot.on('callback_query', async (ctx, next) => {
+  try {
+    await ctx.answerCbQuery();
+  } catch (e) {
+    console.error("Callback Error:", e.message);
+  }
+  return next();
+});
 
 // --- COMMANDS ---
 bot.start(async (ctx) => {
@@ -26,7 +39,7 @@ bot.command('reset', async (ctx) => {
   await SetupHandler.handleReset(ctx, writeSave);
 });
 
-// --- CORE ACTIONS (ACTION HANDLER) ---
+// --- CORE ACTIONS ---
 bot.action('age_up', async (ctx) => {
   const state = await readSave(ctx.from.id);
   await ActionHandler.handleAgeUp(ctx, state, writeSave);
@@ -38,7 +51,7 @@ bot.action(/^choice_(.*)_(.*)$/, async (ctx) => {
   await ActionHandler.handleChoice(ctx, state, eventId, choiceIndex, writeSave);
 });
 
-// --- NAVIGATION (NAVIGATION HANDLER) ---
+// --- NAVIGATION ---
 bot.action('tree', async (ctx) => {
   const state = await readSave(ctx.from.id);
   await NavigationHandler.handleTree(ctx, state, writeSave);
@@ -74,7 +87,7 @@ bot.action('main_menu', async (ctx) => {
   await NavigationHandler.handleMainMenu(ctx, state, writeSave);
 });
 
-// --- SOCIAL (SOCIAL HANDLER) ---
+// --- SOCIAL ---
 bot.action(/^interact_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
   await SocialHandler.triggerInteractMenu(ctx, state, ctx.match[1]);
@@ -113,6 +126,7 @@ bot.action(/^act_ask_rel_(.*)$/, async (ctx) => {
 // --- SETUP CALLBACKS ---
 bot.action(/set_gender_(.*)/, async (ctx) => {
   const state = await readSave(ctx.from.id);
+  if (!state.persons[state.current_id]) return;
   state.persons[state.current_id].gender = ctx.match[1] === 'M' ? 'M' : 'W';
   await SetupHandler.runSetup(ctx, state, writeSave);
 });
@@ -125,13 +139,17 @@ bot.action(/set_country_(.*)/, async (ctx) => {
 
 bot.action(/^set_famname_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
-  await SocialHandler.handleFamilyNameChoice(ctx, state, ctx.match[1], writeSave);
+  // Falls SocialHandler handleFamilyNameChoice hat, sonst finalizedMarriage nutzen
+  if (SocialHandler.handleFamilyNameChoice) {
+    await SocialHandler.handleFamilyNameChoice(ctx, state, ctx.match[1], writeSave);
+  }
 });
 
 bot.action(/^set_sex_(.*)$/, async (ctx) => {
   const state = await readSave(ctx.from.id);
-  state.persons[state.current_id].sexuality = ctx.match[1];
-  state.persons[state.current_id].hasSetSexuality = true;
+  const p = state.persons[state.current_id];
+  p.sexuality = ctx.match[1];
+  p.hasSetSexuality = true;
   await ActionHandler.handleSexualityFinalize(ctx, state, writeSave);
 });
 
@@ -141,16 +159,18 @@ bot.on('text', async (ctx) => {
   if (!state) return;
   const input = ctx.message.text.trim();
 
+  // Routen der Texteingabe je nach Setup-Status
   if (state.setupStep === 'name') {
     await SetupHandler.handleNameInput(ctx, state, input, writeSave);
   } else if (state.setupStep === 'naming_baby') {
     await SetupHandler.handleNamingBaby(ctx, state, input, writeSave);
   } else if (state.setupStep === 'typing_custom_famname') {
-    await SocialHandler.handleCustomLastName(ctx, state, input, writeSave);
+    // Hier sicherstellen, dass SocialHandler handleCustomLastName hat
+    if (SocialHandler.handleCustomLastName) {
+      await SocialHandler.handleCustomLastName(ctx, state, input, writeSave);
+    }
   }
 });
 
-bot.on('callback_query', (ctx) => ctx.answerCbQuery());
-
-// Webhook handling via index.js, launch() hier entfernen, falls Webhooks genutzt werden
+// WICHTIG: Kein bot.launch() hier! Das übernimmt die index.js via Webhook.
 module.exports = bot;
