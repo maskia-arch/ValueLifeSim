@@ -2,12 +2,12 @@ const { Telegraf } = require('telegraf');
 const { readSave, writeSave } = require('./storage/save');
 const config = require('./config');
 
-// Import der modularen Handler
-const SetupHandler = require('./handlers/setup');
-const ActionHandler = require('./handlers/action');
-const SocialHandler = require('./handlers/social');
-const NavigationHandler = require('./handlers/navigation');
-const Messenger = require('./utils/messenger');
+// PFAD-KORREKTUREN: Mit ../ verlassen wir den src-Ordner, um auf die Handler zuzugreifen
+const SetupHandler = require('../handlers/setup');
+const ActionHandler = require('../handlers/action');
+const SocialHandler = require('../handlers/social');
+const NavigationHandler = require('../handlers/navigation');
+const Messenger = require('../utils/messenger'); // Utils liegt ebenfalls auf der Root-Ebene
 const Keyboards = require('./ui/keyboards');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -151,4 +151,6 @@ bot.on('text', async (ctx) => {
 });
 
 bot.on('callback_query', (ctx) => ctx.answerCbQuery());
-bot.launch().then(() => console.log(`ValueLifeSim v${config.version} online!`));
+
+// Webhook handling via index.js, launch() hier entfernen, falls Webhooks genutzt werden
+module.exports = bot;
